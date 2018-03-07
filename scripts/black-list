@@ -1,0 +1,515 @@
+#!/usr/bin/env python
+
+# maipulate black-list from voip.ms API
+
+# black-list --help      ( print usage )
+# black-list             ( print the list of filters along with rule IDs )
+# black-list --busy   --note 'DickHeads Inc'  4165551212 ( add an entry )
+# black-list --hangup --note 'DickHeads Inc'  --filterid 12345  4165551212
+# black-list -X -f 12345 ( delete rule with filter ID 12345 )
+
+# Copyright 2018 RJ White
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# ---------------------------------------------------------------------
+
+
+# need 3rd party Config from github.com/rjwhite/Python-config-module
+# add the default path if they installed it as a normal user via
+#    python setup.py install --user=~
+
+import os
+import sys
+home = os.environ[ 'HOME' ]
+sys.path.append( home + '/lib/python' )
+import config
+
+import re
+import requests
+import json
+import urllib
+
+
+ROUTING_NO_SERVICE   = "noservice"
+ROUTING_BUSY         = "busy"
+ROUTING_HANG_UP      = "hangup"
+ROUTING_DISCONNECTED = "disconnected"
+
+valid_routing_types = set( [ ROUTING_NO_SERVICE, ROUTING_BUSY, ROUTING_HANG_UP, ROUTING_DISCONNECTED ] )
+
+debug_flag      = False
+help_flag       = False
+delete_flag     = False
+set_flag        = False
+update_flag     = False
+
+version         = 'v0.1'
+config_file     = home + '/' + '.voip-ms.conf'
+caller_id       = None
+filter_id       = None
+progname        = sys.argv[0]
+
+methods = {
+    'get':      'getCallerIDFiltering',
+    'set':      'setCallerIDFiltering',
+    'delete':   'delCallerIDFiltering'
+}
+
+defaults = {
+    'note':     "Added by {0:s} program".format( progname ),
+    'routing':  ROUTING_NO_SERVICE,
+    'callerid': None,
+    'did':      None
+}
+values  = {}
+
+class BadWebCall( Exception ): pass
+
+
+# debug function if --debug|-d option given
+#
+# Arguments:
+#   string to print
+# Returns:
+#   0
+# Exceptions:
+#   none
+
+def dprint( msg ):
+    global debug_flag
+
+    if debug_flag == False: return(0)
+    print msg
+    return(0) ;
+
+
+# send a URL to the Voip.ms API
+#
+# Arguments:
+#   1:  URL
+# Returns:
+#   JSON structure
+# Exceptions:
+#   BadWebCall
+
+def send_request( url ):
+    my_name = sys._getframe().f_code.co_name
+
+    dprint( "{0:s}(): URL = {1:s}".format( my_name, url ))
+
+    try:
+        res = requests.get( url )
+        json_data = res.text.encode( 'ascii' )
+        json_struct = json.loads( json_data )
+        status = str( json_struct[ 'status' ] )
+    except ( KeyboardInterrupt, IOError, SyntaxError, ValueError ) as err:
+        raise BadWebCall( "{0:s}(): {1:s}\n".format( my_name, err ))
+
+    if status != 'success':
+        raise BadWebCall( "{0:s}(): Failed status: {1:s}". \
+            format( my_name, status ))
+
+    dprint( "{0:s}(): status = {1:s}".format( my_name, status ))
+
+    return( json_struct )
+
+
+# print usage
+#
+# Arguments:
+#   none
+# Returns:
+#   0
+# Exceptions:
+#   none
+
+def usage():
+    global  config_file, routing, did
+    
+    print "usage: {0:s} [options]* caller-id".format( sys.argv[0] )
+    print "\t[-c|--config]        config-file (default={0:s})".format( config_file )
+    print "\t[-d|--debug]         (debugging output)"
+    print "\t[-f|--filterid]      number (existing rule filter ID to change/delete rule)"
+    print "\t[-h|--help]          (help)"
+    print "\t[-l|--line]          DID-phone-number (default={0:s})". \
+        format( did )
+    print "\t[-n|--note]          string"
+    print "\t[-r|--routing]       noservice|busy|hangup|disconnected (default={0:s})". \
+        format( routing )
+    print "\t[-B|--busy]          (routing=sys:busy)"
+    print "\t[-D|--disconnected]  (routing=sys:disconnected)"
+    print "\t[-H|--hangup]        (routing=sys:hangup)"
+    print "\t[-N|--noservice]     (routing=sys:noservice)"
+    print "\t[-V|--version]       (print version of this program)"
+    print "\t[-X|--delete]        (delete an entry. Also needs --filterid)"
+
+    return(0)
+
+
+
+num_args = len( sys.argv )
+i = 1
+while i < num_args:
+    try:
+        arg = sys.argv[i]
+        if arg == '-c' or arg == '--config':
+            i = i + 1 ;     config_file = sys.argv[i]
+        elif arg == '-l' or arg == '--line':
+            i = i + 1 ;     values[ 'did' ] = sys.argv[i]
+        elif arg == '-f' or arg == '--filterid':
+            i = i + 1 ;     filter_id = sys.argv[i]
+        elif arg == '-n' or arg == '--note':
+            i = i + 1 ;     values[ 'note' ] = sys.argv[i]
+        elif arg == '-r' or arg == '--routing':
+            i = i + 1 ;     values[ 'routing' ] = sys.argv[i]
+        elif arg == '-B' or arg == '--busy':
+            values[ 'routing' ] = ROUTING_BUSY
+        elif arg == '-D' or arg == '--disconnected':
+            values[ 'routing' ] = ROUTING_DISCONNECTED
+        elif arg == '-H' or arg == '--hangup':
+            values[ 'routing' ] = ROUTING_HANG_UP
+        elif arg == '-N' or arg == '--noservice':
+            values[ 'routing' ] = ROUTING_NO_SERVICE
+        elif arg == '-X' or arg == '--delete':
+            delete_flag = True
+        elif arg == '-d' or arg == '--debug':
+            debug_flag = True
+        elif arg == '-a' or arg == '--all':
+            all_info_flag = True
+        elif arg == '-h' or arg == '--help':
+            help_flag = True
+        elif arg == '-V' or arg == '--version':
+            print "version: {0:s}".format( version )
+            sys.exit(0)
+        else:
+            m = re.match( "^\-", arg )
+            if m:
+                sys.stderr.write( "{0:s}: unknown option: \'{1:s}\'\n". \
+                    format( progname, arg ))
+                sys.exit(1)
+
+            if caller_id != None:
+                sys.stderr.write( "{0:s}: already provided a caller ID: \'{1:s}\'\n". \
+                    format( progname, caller_id ))
+                sys.exit(1)
+            else:
+                caller_id = arg
+                values[ 'callerid' ] = caller_id
+    except IndexError as err:
+        sys.stderr.write( "{0:s}: {1:s}.  Missing argument value to \'{2:s}\'?\n". \
+            format( progname, err, arg ))
+        sys.exit(1)
+
+    i = i+1
+
+# set a flag if we are making changes to an existing entry
+if 'routing' in values or 'note' in values or 'did' in values:
+    set_flag = True
+    dprint( "We are making changes because one or more of routing, note or did was given as an option" )
+
+    if filter_id != None:
+        # we're making changes, not adding new stuff - which could have defaults
+        # save our options, to over-ride whatever the current value are, and set a flag
+        options = {}
+        for field in values:
+            options[ field ] = values[ field ]
+        update_flag = True
+
+
+config.Config.set_debug( debug_flag )
+
+# no definitions file.  Our type info is all in our config file.
+try:
+    conf = config.Config( config_file, '', AcceptUndefinedKeywords=True )
+except ( IOError, SyntaxError, ValueError ) as err:
+    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+    sys.exit(1)
+
+dprint( "Config data read OK.  double-plus woohoo." )
+
+# make sure we have our mandatory sections
+num_errors = 0
+needed_sections = [ 'authentication', 'black-list' ]
+sections = conf.get_sections()
+for section in needed_sections:
+    if section not in sections:
+        num_errors = num_errors + 1
+        sys.stderr.write( "{0:s}: missing section \'{1:s}\' in {2:s}\n". \
+            format( progname, section, config_file ))
+
+if num_errors > 0:
+    sys.exit(1)
+
+# make sure we have our mandatory keywords for authentication
+keywords_i_need = [ 'user', 'pass' ]
+keywords = conf.get_keywords( 'authentication' )
+for keyword in keywords_i_need:
+    if keyword not in keywords:
+        num_errors = num_errors + 1
+        sys.stderr.write( "{0:s}: missing keyword \'{1:s}\' in section \'authentication\' in {2:s}\n". \
+            format( progname, keyword, config_file ))
+
+if num_errors > 0:
+    sys.exit(1)
+
+# We know these exist from the above mandatory checks
+
+userid   = conf.get_values( 'authentication', 'user' )
+password = conf.get_values( 'authentication', 'pass' )
+
+dprint( "user\t= {0:s}".format( userid ))
+dprint( "pass\t= {0:s}".format( password ))
+
+# values from the config file over-ride any defaults
+keywords = conf.get_keywords( 'black-list' )
+for keyword in keywords:
+    val = conf.get_values( 'black-list', keyword )
+    dprint( "Replacing/setting default for \'{0:s}\' value of \'{1:s}\' from config file". \
+        format( keyword, val ))
+    defaults[ keyword ] = val
+
+# populate our values with defaults - which could have been updated from the config file
+for field in defaults:
+    if ( field not in values ) or ( values[ field ] == None ):
+        dprint( "Using \'{0:s}\' value of \'{1:s}\' from defaults". \
+            format( field, defaults[ field ] ))
+        values[ field ] = defaults[ field ]
+
+
+# build the base URL
+
+base_url = "https://voip.ms/api/v1/rest.php" + \
+        "?api_username={0:s}&api_password={1:s}". \
+            format( userid, password )
+dprint( "BASE URL = " + base_url )
+
+
+# Need to check if this is an update of one or more items.  if so, we
+# want to preserve the current values if we did not specifically give new
+# ones as command-line options.
+
+if update_flag == True:
+    dprint( "Crap.  we need to go grab existing values" )
+    method = methods[ 'get' ]
+
+    url = base_url + "&method={0:s}&filtering={1:s}".format( method, filter_id )
+    dprint( "URL for getting OLD data  = " + url )
+
+    try:
+        old_data = send_request( url )
+    except BadWebCall as err:
+        sys.stderr.write( "{0:s}: {1:s}\n".format( progname, str(err)))
+        sys.exit(1)
+
+    # we should only have 1 entry being returned
+
+    try:
+        num_entries = len( old_data[ 'filtering' ] )
+    except KeyError as err:
+        sys.stderr.write( "{0:s}: No \'filtering\' data found\n".format( progname ))
+        sys.exit(1)
+
+    if num_entries != 1:
+        sys.stderr.write( "{0:s}: did not get 1 entry (got {2:d}) for OLD values with filter ID = {3:s}\n". \
+            format( progname, num_entries, filter_id ))
+        sys.exit(1)
+
+    fields_we_want = [ 'note', 'routing', 'callerid', 'did' ]
+    old_fields = {}
+    for field in fields_we_want:
+        if field in old_data[ 'filtering' ][0]:
+            old_fields[ field ] = old_data[ 'filtering' ][0][ field ]
+            dprint( "grabbed OLD data for field \'{0:s}\' of \'{1:s}\'". \
+                format( field, old_fields[ field ] ))
+
+    # now over-ride that with whatever we gave on the command-line
+
+    for field in options:
+        old_fields[ field ] = options[ field ]
+        dprint( "Over-riding field \'{0:s}\' with command-line data \'{1:s}\'". \
+            format( field, options[ field ] ))
+
+    note      = old_fields[ 'note' ]
+    caller_id = old_fields[ 'callerid' ]
+    did       = old_fields[ 'did' ]
+    routing   = old_fields[ 'routing' ]
+
+    if routing.startswith("sys:"):
+        routing = routing[4:]
+else:
+    note      = values[ 'note' ]
+    caller_id = values[ 'callerid' ]
+    did       = values[ 'did' ]
+    routing   = values[ 'routing' ]
+
+
+#  encode stuff that might have spaces or other unfriendly characters
+note     = urllib.quote( note )
+password = urllib.quote( password )
+
+# see if DID is given, and if so, format it correctly
+
+if did != None:
+    did = did.replace( '-', '' )        # remove dashes
+    did = did.replace( ' ', '' )        # remove spaces
+
+    if did.isdigit() == False:
+        sys.stderr.write( "{0:s}: DID is not numeric: {1:s}\n".format( progname, str(did)))
+        sys.exit(1)
+
+    dprint( "DID number is now: {0:s}".format( did ))
+else:
+        sys.stderr.write( "{0:s}: No DID number provided\n".format( progname ))
+        sys.exit(1)
+
+# make sure any routing type is valid
+
+if routing not in valid_routing_types:
+    sys.stderr.write( "{0:s}: Invalid routing type: \'{1:s}\'\n". \
+        format( progname, routing ))
+    sys.exit(1)
+
+# need to prepend 'sys:' if it isn't there
+
+m = re.match( "^sys", routing )
+if not m:
+    routing = 'sys:' + routing
+
+# see if a callerID was given. If so, clean it up.
+
+if caller_id != None:
+    caller_id = caller_id.replace( '-', '' )        # remove dashes
+    caller_id = caller_id.replace( ' ', '' )        # remove spaces
+    m = re.match( "^\d+$", caller_id )
+    if not m:
+        sys.stderr.write( "{0:s}: caller ID must be digits: \'{1:s}\'.\n". \
+            format( progname, caller_id ))
+        sys.exit(1)
+
+
+# we finally have default values set to show up in the usage
+
+if help_flag:
+    usage()
+    sys.exit(0)
+
+
+# ready to go.
+
+if delete_flag:
+    if set_flag:
+        sys.stderr.write( "{0:s}: Don't give fields to change along with the delete option.\n". \
+            format( progname ))
+        sys.exit(1)
+        
+    if filter_id == None:
+        sys.stderr.write( "{0:s}: Need to provide a filter ID to delete an entry\n". \
+            format( progname ))
+        sys.exit(1)
+
+    if caller_id != None:
+        sys.stderr.write( "{0:s}: Don't provide a caller ID to delete an entry\n". \
+            format( progname ))
+        sys.exit(1)
+
+    # we are doing a DELETE
+    method = methods[ 'delete' ]
+elif set_flag:
+    if caller_id == None:
+        sys.stderr.write( "{0:s}: Need to provide a caller ID to set or change an entry.\n". \
+            format( progname ))
+        sys.exit(1)
+
+    # we are doing a SET
+    method = methods[ 'set' ]
+else:
+    # we are doing a GET
+    method = methods[ 'get' ]
+
+dprint( "METHOD = " + method )
+
+# supply our method
+url = base_url + "&method={0:s}".format( method )
+
+# add on any fields if we are doing a change (SET)
+if set_flag == True:
+    url = url + "&note={0:s}&routing={1:s}&callerid={2:s}&did={3:s}". \
+        format( note, routing, caller_id, did )
+
+# now see if a filtering option  was given
+if filter_id != None:
+    # oh good grief...
+    if set_flag == True:
+        url = url + "&filter={0:s}".format( filter_id )
+    else:
+        url = url + "&filtering={0:s}".format( filter_id )
+
+    dprint( "...adding filter ID={0:s}".format( filter_id )) 
+
+dprint( "URL = " + url )
+
+try:
+    json_struct = send_request( url )
+except BadWebCall as err:
+    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, str(err)))
+    sys.exit(1)
+
+if delete_flag == True or set_flag == True:
+    sys.exit(0)     # we're done
+
+try:
+    num_lines = len( json_struct[ 'filtering' ] )
+except KeyError as err:
+    sys.stderr.write( "{0:s}: No \'filtering\' data found\n".format( progname ))
+    sys.exit(1)
+
+dprint( "Number of lines is " + str( num_lines ))
+
+# print a title if we have some entries
+# get the max size of the notes
+max_note_len = 0
+for i in range( 0, num_lines ):
+    try:
+        note_len = len( json_struct[ 'filtering' ][ i ][ 'note' ] )
+    except KeyError:
+        note_len = 0     # couldn't get it
+
+    if note_len > max_note_len:
+        max_note_len = note_len
+
+if num_lines:
+    print "{0:<16s} {1:<12s} {2:<16s} {3:<28s} {4:s}". \
+        format( 'CallerID', 'DID', 'Routing', 'Filter#', 'Note' )
+    print "{0:<12s} {1:<12s} {2:<20s} {3:<10s} {4:s}". \
+        format( '-' * 10, '-' * 10, '-' * 17, '-' * 7, '-' * max_note_len )
+
+for i in range( 0, num_lines ):
+    # set up defaults in stuff we want
+    entry = {
+        "filtering":    "unknown",
+        "callerid":     "unknown",
+        "did":          "unknown",
+        "routing":      "unknown",
+        "note":         ""
+    }
+
+    # collect whatever we found in the data - override defaults
+    for field in json_struct[ 'filtering' ][ i ]:
+        entry[ field ] = json_struct[ 'filtering' ][ i ][ field ]
+
+    # print entry
+    print "{0:<12s} {1:<12s} {2:<20s} {3:<10d} {4:s}". \
+        format( entry[ 'callerid' ], entry[ 'did' ], entry[ 'routing' ], \
+                int( entry[ 'filtering' ]), entry[ 'note' ] )
+
+sys.exit(0)

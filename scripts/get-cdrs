@@ -1,0 +1,720 @@
+#!/usr/bin/env python
+
+# # get-cdrs.py --help
+
+# Copyright 2018 RJ White
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# ---------------------------------------------------------------------
+
+
+# need 3rd party Config from github.com/rjwhite/Python-config-module
+# add the default path if they installed it as a normal user via
+#    python setup.py install --user=~
+
+import os
+import sys
+home = os.environ[ 'HOME' ]
+sys.path.append( home + '/lib/python' )
+import config
+
+import requests
+import json
+import time
+import re
+from datetime import date
+import datetime
+
+# constants
+
+FROM_DATE       = 0
+TO_DATE         = 1
+
+version         = 'v0.1'
+home            = os.environ[ 'HOME' ]
+config_file     = home + '/' + '.voip-ms.conf'
+cost_flag       = False
+debug_flag      = False
+quiet_flag      = False
+reverse_flag    = False
+method          = 'getCDR'
+account_name    = ""
+from_date       = ""
+to_date         = ""
+last_month_flag = False
+this_month_flag = False
+padding         = 3
+progname        = sys.argv[0]
+
+class InvalidArgument( Exception ): pass
+class ShouldBeEmpty_String( Exception ): pass
+class InvalidDate( Exception ): pass
+
+
+# Print a debug string if global debug flag set
+#
+# Arguments:
+#    1: string to print
+# Returns:
+#   0
+# Globals:
+#   debug_flag
+
+def dprint( msg ):
+    global debug_flag
+
+    if debug_flag == False: return(0)
+    print msg
+    return(0) ;
+
+
+# Convert seconds into a pretty string of hours, mins and seconds
+#
+# Arguments:
+#    1: number of seconds
+# Returns:
+#   string. eg: 10 hours, 19 mins, 48 secs
+# Exceptions:
+#   InvalidArgument
+
+def convert_seconds( seconds ):
+    my_name = sys._getframe().f_code.co_name
+
+    if str( seconds ).isdigit() == False:
+        raise InvalidArgument( "{0:s}(): Argument not a number: \'{1:s}\'.". \
+            format( my_name, str( seconds ) ))
+
+    mixed = ""
+
+    seconds = int( seconds )        # in case given as a string
+    if seconds == 0:
+        return "0 secs"
+
+    hours = int( seconds / ( 60 * 60 ))
+    if hours:
+        seconds = seconds - ( hours * ( 60 * 60 ))
+        hour_str = "hours"
+        if hours == 1:
+            hour_str = "hour"
+        mixed =  "{0:d} {1:s}, ".format( hours, hour_str )
+
+    mins = int( seconds / 60 )
+    if mins:
+        seconds = seconds - ( mins * 60 )
+        min_str = "mins"
+        if mins == 1: 
+            min_str = "min"     # singular
+        mixed = "{0:s}{1:d} {2:s}, ".format( mixed, mins, min_str )
+
+    sec_str = "secs"
+    if seconds == 1:
+        sec_str = "sec"
+
+    mixed = "{0:s}{1:d} {2:s}".format( mixed, seconds, sec_str )
+
+    return( mixed ) ;
+
+
+# Convert a date of format YYYY-MM-DD into a pretty human-readable string
+# such as '2017-02-04' -> Sat Feb 04, 2017
+#
+# Arguments:
+#    1: date of format YYYY-MM-DD
+# Returns:
+#   string.  eg: Sat Feb 04, 2017
+# Exceptions:
+#   InvalidDate
+
+def pretty_date( dayt ):
+    my_name = sys._getframe().f_code.co_name
+
+    try:
+        year, month, day = dayt.split("-")
+    except:
+        raise InvalidDate( "{0:s}(): Bad date. input was \'{1:s}\'". \
+            format( my_name, dayt ))
+
+    d =  date( int(year), int(month), int(day) )
+    return( d.strftime("%a %b %d, %Y") )
+
+
+
+# Convert a date of format YYYY-MM-DD into number of seconds since Unix epoch
+# such as '2017-02-04' -> 1517720400
+#
+# Arguments:
+#    1: date of format YYYY-MM-DD
+# Returns:
+#   string.  eg: 1517720400
+# Exceptions:
+#   InvalidDate
+
+def seconds_since_epoch( dayt ):
+    my_name = sys._getframe().f_code.co_name
+
+    try:
+        year, month, day = dayt.split("-")
+        d = datetime.datetime( int(year), int(month), int(day), 0, 0).strftime('%s')
+    except:
+        raise InvalidDate( "{0:s}(): Bad date. input was \'{1:s}\'".format( my_name, dayt ))
+
+    return( long( d ))
+
+
+
+# Test an argument if it is an empty string
+#
+# Arguments:
+#    1: a string
+# Returns:
+#    0: yes
+# Exceptions:
+#   ShouldBeEmpty_String
+
+def should_be_empty( some_string, msg ):
+    if some_string == "":  return(0)
+
+    raise ShouldBeEmpty_String( msg )
+
+
+# Format a date.  This is called if the --last-month or --this-month
+# options are called and we need a first and last mday of month in a
+# format of YYYY-MM-DD
+#
+# Arguments:
+#   1: month - int
+#   2: year  - int
+#   3: flag  - FROM_DATE | TO_DATE
+# Returns:
+    YYYY-MM-DD
+# Exceptions:
+#   InvalidArgument
+#   InvalidDate
+
+def format_date( mon, year, flag):
+    my_name = sys._getframe().f_code.co_name
+
+    # Jan = 1,  Dec = 12 - but days_in_month indexed starting at 0
+    days_in_month = [ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 ]
+
+    if ( str( mon ).isdigit == False ) or ( mon > 12 ):
+        raise InvalidArgument( "{0:s}(): Invalid 1st argument (month): {1:s}". \
+            format( my_name, str( mon ) ))
+
+    if str( year ).isdigit() == False:
+        raise InvalidArgument( "{0:s}(): Invalid 1st argument (year): \'{1:s}\'". \
+            format( my_name, str( year ) ))
+
+    if ( len( str( year )) != 2) and ( len( str( year )) != 4 ):
+        raise InvalidArgument( "{0:s}(): Invalid 2nd argument (year): \'{1:d}\'". \
+            format( my_name, year ))
+
+    if ( flag != FROM_DATE ) and ( flag != TO_DATE):
+        raise InvalidArgument( "{0:s}(): Invalid 3rd argument: \'{1:s}\'". \
+            format( my_name, str( flag ) ))
+
+    if year < 100:
+        year = year + 2000
+
+    current_year = time.localtime()[0]
+    if year > current_year:
+        raise InvalidDate( "{0:s}(): year {1:d} is past current year ({2:d})". \
+            format( my_name, year, current_year ))
+
+    num_days = days_in_month[ mon - 1 ]
+    try:
+        if ( is_leap_year( year )):
+            if mon == 2:
+                num_days = num_days + 1     # February and a leap year
+    except (InvalidArgument, InvalidDate) as err:
+        raise
+
+    # want the month and day to be 2 digits
+    mon      = "{0:02d}".format( int( mon ))
+    num_days = "{0:02d}".format( int( num_days ))
+
+    if flag == FROM_DATE:
+        dayt = "{0:s}-{1:s}-01".format( str(year), str(mon) )
+    else:
+        dayt = "{0:s}-{1:s}-{2:s}".format( str(year), str(mon), str(num_days) )
+
+    return( dayt )
+
+
+# Is it a leap year
+# Assume a 2-digit year is 20xx
+#
+# Arguments:
+#    1: year (YYYY)
+# Returns:
+#    0: No
+#    1: yes
+# Exceptions:
+#   InvalidArgument
+#   InvalidDate
+
+def is_leap_year( year ):
+    my_name = sys._getframe().f_code.co_name
+
+    if str( year ) == "" :
+        raise InvalidArgument( "{0:s}(): Invalid 1st argument (year)". \
+            format( my_name ))
+
+    # must be all digits
+    if str( year ).isdigit() == False:
+        raise InvalidDate( "{0:s}(): Invalid (year): \'{1:s}\'". \
+            format( my_name, str( year ) ))
+
+    # if 2 digits, make it 4 - this century
+    if year < 100:
+        year = year + 2000
+
+    # must be 4 digits
+    m = re.match( "^\d\d\d\d$", str( year ))
+    if m == False:
+        raise InvalidDate( "{0:s}(): Invalid (year): \'{1:s}\'". \
+            format( my_name, str( year ) ))
+
+    if year % 4:
+        leap_year = False
+    elif year % 100:
+        leap_year = True
+    elif year % 400:
+        leap_year = False
+    else:
+        leap_year = True
+
+    if leap_year == True:
+        dprint( "{0:s}(): {1:d} IS a leap year".format( my_name, year ))
+        return(1)
+    else:
+        dprint( "{0:s}(): {1:d} is NOT a leap year".format( my_name, year ))
+        return(0)
+
+
+# handle command-line options.  No, I don't wanna use optparse
+
+num_args = len( sys.argv )
+i = 1
+while i < num_args:
+    try:
+        arg = sys.argv[i]
+        if arg == '-c' or arg == '--config':
+            i = i + 1 ;     config_file = sys.argv[i]
+        elif arg == '-a' or arg == '--account':
+            i = i + 1 ;     account_name = sys.argv[i]
+        elif arg == '-f' or arg == '--from':
+            i = i + 1 ;     from_date = sys.argv[i]
+        elif arg == '-t' or arg == '--to':
+            i = i + 1 ;     to_date = sys.argv[i]
+        elif arg == '-p' or arg == '--padding':
+            i = i + 1 ;     padding = sys.argv[i]
+            if padding.isdigit() == False:
+                sys.stderr.write( "{0:s}: padding given ({1:s}) needs to be a number\n". \
+                    format( progname, padding ))
+                sys.exit(1)
+        elif arg == '-d' or arg == '--debug':
+            debug_flag = True
+        elif arg == '-L' or arg == '--last-month':
+            last_month_flag = True
+        elif arg == '-T' or arg == '--this-month':
+            this_month_flag = True
+        elif arg == '-C' or arg == '--cost':
+            cost_flag = True
+        elif arg == '-r' or arg == '--reverse':
+            reverse_flag = True
+        elif arg == '-q' or arg == '--quiet':
+            quiet_flag = True
+        elif arg == '-s' or arg == '--sheldon':
+            print "Bazinga!"
+            sys.exit(0)
+        elif arg == '-V' or arg == '--version':
+            print "version: {0:s}".format( version )
+            sys.exit(0)
+        elif arg == '-h' or arg == '--help':
+            print "usage: {0:s} [options]*".format( sys.argv[0] )
+            print "\t[-a|--account]     account name"
+            print "\t[-c|--config]      config-file (default={0:s})".format( config_file )
+            print "\t[-d|--debug]       (debugging output)"
+            print "\t[-f|--from]        YYYY-MM-DD (FROM date)"
+            print "\t[-h|--help]        (help)"
+            print "\t[-p|--padding]     number (padding between output fields (default={0:d})". \
+                format( padding )
+            print "\t[-q|--quiet]       (quiet.  No headings and titles)"
+            print "\t[-r|--reverse]     (reverse date order of CDR output)"
+            print "\t[-s|--sheldon]"
+            print "\t[-T|--to]          YYYY-MM-DD (TO date)"
+            print "\t[-C|--cost]        (total up costs and duration of CDRs)"
+            print "\t[-L|--last-month]  (want CDR records for LAST month)"
+            print "\t[-T|--this-month]  (want CDR records for THIS month)"
+            print "\t[-V|--version]     (print version of this program)"
+            sys.exit(0)
+        else:
+            sys.stderr.write( "{0:s}: unknown option: {1:s}\n".format( progname, arg ))
+            sys.exit(1)
+    except IndexError as err:
+        sys.stderr.write( "{0:s}: {1:s}.  Missing argument value to \'{2:s}\'?\n". \
+            format( progname, err, arg ))
+        sys.exit(1)
+
+    i = i+1
+
+padding = int( padding )
+
+
+if last_month_flag == True and this_month_flag == True:
+    sys.stderr.write( "{0:s}: Don't use --last-month and --this-month options together\n". \
+        format( progname ))  
+    sys.exit(1)
+
+year  = time.localtime()[0]
+month = time.localtime()[1]
+day   = time.localtime()[2]
+
+if last_month_flag or this_month_flag:
+    try:
+        should_be_empty( from_date, "You already gave a FROM date" )
+        should_be_empty( to_date,   "You already gave a TO date" )
+    except ShouldBeEmpty_String as e:
+        sys.stderr.write( "{0:s}: {1:s}\n".format( progname, e ))
+        sys.exit(1)
+
+    if last_month_flag:
+        # point to previous month
+        month = month - 1
+        if month == 0:
+            month = 12
+            year = year - 1
+
+    try:
+        from_date = format_date( month, year, FROM_DATE )
+        to_date   = format_date( month, year, TO_DATE )
+    except (InvalidArgument, InvalidDate) as e:
+        sys.stderr.write( "{0:s}: {1:s}\n".format( progname, e ))
+        sys.exit(1)
+
+
+# We need 'from' and 'to' dates.  Make it only today if nothing given.
+
+if from_date == "" or to_date == "":
+    month = "{0:02d}".format( month )
+    day   = "{0:02d}".format( day )
+    today = "{0:s}-{1:s}-{2:s}".format( str(year), str(month), str(day) )
+    if from_date == "":
+        from_date = today
+    if to_date == "":
+        to_date = today
+
+# do some sanity checking on the dates
+
+dates = {
+    "FROM":     from_date,
+    "TO":       to_date
+}
+
+dates_list = list( dates )
+for d in dates_list:
+    var = dates[ d ]
+    m = re.match( "^\d{2,4}\-\d{1,2}\-\d{1,2}$", var )
+    if not m:
+        sys.stderr.write( "{0:s}: {1:s} date ({2:s}) has an invalid format\n". \
+            format( progname, d, var ))
+        sys.exit(1)
+    else:
+        dprint( "{0:s} date passed format check".format( d ))
+
+try:
+    if seconds_since_epoch( from_date ) > seconds_since_epoch( to_date ):
+        sys.stderr.write( "{0:s}: FROM date ({1:s}) is after TO date ({2:s})\n". \
+            format( progname, from_date, to_date ))
+        sys.exit(1)
+    else:
+        dprint( "From date passed before to date check" )
+
+except (ValueError, InvalidDate) as err:
+    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+    sys.exit(1)
+
+
+dprint( "read out config file" )
+
+# collect our data from the config file
+
+config.Config.set_debug( debug_flag )
+
+# no definitions file.  Our type info is all in our config file.
+try:
+    conf = config.Config( config_file, '', AcceptUndefinedKeywords=True )
+except ( IOError, SyntaxError, ValueError ) as err:
+    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+    sys.exit(1)
+
+dprint( "Config data read ok.  woohoo." )
+
+required_keywords = {
+    'authentication':   [ 'user', 'pass' ],
+    'cdrs':             [ 'order', 'title', 'cdrs-wanted' ],
+    'time':             [ 'timezone' ]
+}
+
+sections = conf.get_sections()
+num_errors = 0
+for section in required_keywords:
+    dprint( "testing existance of section \'{0:s}\'".format( section ))
+    if section not in sections:
+        sys.stderr.write( "{0:s}: missing section \'{1:s}\' in {2:s}\n". \
+            format( progname, section, config_file ))
+        num_errors = num_errors + 1
+    else:
+        keywords = conf.get_keywords( section )
+        for keyword in required_keywords[ section ]:
+            dprint( "testing existance of keyword \'{0:s}\' in section \'{1:s}\'". \
+                format( keyword, section ))
+            if keyword not in keywords:
+                sys.stderr.write( "{0:s}: missing keyword \'{1:s}\' in section \'cdrs\' in {2:s}\n". \
+                    format( progname, keyword, config_file ))
+                num_errors = num_errors + 1
+
+if num_errors > 0:
+    sys.exit(1)
+dprint( "All mandatory fields in config file found" )
+
+# we know this stuff exists from the above sanity checks so we don't have to check
+userid   = conf.get_values( 'authentication', 'user' )
+password = conf.get_values( 'authentication', 'pass' )
+timezone = conf.get_values( 'time', 'timezone' ) ;
+fields   = conf.get_values( 'cdrs', 'order' ) ;
+titles   = conf.get_values( 'cdrs', 'title' ) ;
+wanted   = conf.get_values( 'cdrs', 'cdrs-wanted' ) ;
+
+keywords = conf.get_keywords( 'cdrs' )
+got_config_field_sizes_flag = False
+if "field-size" in keywords:
+    got_config_field_sizes_flag = True
+    sizes = conf.get_values( 'cdrs', 'field-size' ) ;
+
+# fill if any missing data.  The 'fields' also specifies what fields we
+# want, so it is the master of what we want.  use it to handle any missing
+# titles or field sizes
+
+for field in fields:
+    if field not in titles:
+        dprint( "Did not find title for \'{0:s}\' in fields we want".format( field ))
+        titles[ field ] = field.capitalize()
+
+
+dprint( "FROM date = " + from_date )
+dprint( "TO   date = " + to_date )
+dprint( "USER = \'{0:s}\' PASS = \'{1:s}\' TIMEZONE = {2:s}". \
+    format( userid, password, timezone ))
+
+# Build up which type of CDRs we want
+
+cdrs_wanted = ""
+keys = list(wanted)
+for key in keys:
+    val = wanted[ key ]
+    if int( val ) == 1:
+        cdrs_wanted = cdrs_wanted + "{0:s}=1&".format( key )
+
+# if we want a specific account
+if account_name != "":
+        cdrs_wanted =  cdrs_wanted + "account={0:s}&".format( account_name )
+
+if cdrs_wanted != "":
+    cdrs_wanted = cdrs_wanted[:-1]      # drop trailing '&'
+
+
+# put the URL all together
+
+# build the URL 
+url = "https://voip.ms/api/v1/rest.php" + \
+        "?api_username={0:s}&api_password={1:s}&method={2:s}" \
+        "&date_from={3:s}&date_to={4:s}&{5:s}&timezone={6:s}". \
+            format( userid, password, method, from_date, to_date, cdrs_wanted, timezone )
+
+dprint( "URL = \'" + url + "\'" )
+
+try:
+    res = requests.get( url )
+    json_data = res.text.encode( 'ascii' )
+    json_struct = json.loads( json_data )
+except ( IOError, SyntaxError, ValueError ) as err:
+    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, str(err)))
+    sys.exit(1)
+
+status = str ( json_struct[ 'status' ] )
+if status == 'no_cdr':
+    print "No CDR records were found from {0:s} to {1:s}". \
+        format( pretty_date( from_date ), pretty_date( to_date ))
+    sys.exit(0)
+
+if status != 'success':
+    sys.stderr.write( "{0:s}: Failed status: {1:s}\n".format( progname, status ))
+    sys.exit(1)
+
+dprint( 'status = ' + status )
+
+
+# get number of CDRs returned
+
+num_cdrs = len( json_struct[ 'cdr' ] )
+dprint( "Number of CDRs found is " + str( num_cdrs ))
+if num_cdrs == 0:
+    print "No CDR records were found"
+    sys.exit(0)
+
+if quiet_flag == False:
+    print "{0:d} CDR records found from {1:s} to {2:s}\n". \
+        format( num_cdrs, pretty_date( from_date ), pretty_date( to_date ))
+
+
+# we want to figure out the maximum length of the data in the event that
+# the config did not provide us with the size of output field.  So grab all
+# the data and cache it for later printing while we get the maximum lengths
+
+data_sizes = {}
+data = []
+for i in range( 0, num_cdrs ):
+    cdr_keys = list( json_struct[ 'cdr' ][ i ] )
+    data.append( {} )
+    for cdr_key in cdr_keys:
+        value = json_struct[ 'cdr' ][ i ][ cdr_key ]
+        data[i][ cdr_key ] = value      # save the data
+
+        # get and save the maximum length
+        data_len = len( value ) + padding     # add padding spaces between fields
+        if cdr_key not in data_sizes:
+            data_sizes[ cdr_key ] = data_len
+            dprint( "\'{0:s}\' initialized to size {1:d} because of size of data". \
+                format( cdr_key, data_len ))
+
+        if data_len > data_sizes[ cdr_key ]:
+            data_sizes[ cdr_key ] = data_len
+            dprint( "\'{0:s}\' given size {1:d} because of size of data".format( cdr_key, data_len ))
+
+# now see if the titles being used exceed the max length of the data used.
+# If so, increase to accomodate the title length
+
+for field in titles:
+    title_len = len( titles[ field ] ) + padding      # add padding spaces between fields
+    if title_len > data_sizes[ field ]:
+        data_sizes[ field ] = title_len
+        dprint( "\'{0:s}\' given size {1:d} because of size of title".format( field, title_len ))
+
+# now see if the config file specified an exact size to use which over-rides
+# the lengths we just created as defaults
+
+if got_config_field_sizes_flag == True:
+    for field in sizes:
+        config_len = int( sizes[ field ] )
+        # ONLY set this if we have enough room for the title plus the padding
+        if config_len > len( titles[ field ] ) + padding:
+            data_sizes[ field ] = config_len
+            dprint( "\'{0:s}\' given size {1:d} because of size of config-file".format( field, config_len ))
+        else:
+            dprint( "\'{0:s}\' can't set size of {1:d} from config-file because no room for title". \
+                format( field, config_len ))
+
+
+# now build the titles
+full_title      = 'call#' ;
+full_dash_title = '-----' ;
+
+if quiet_flag == False:
+    for field in fields:
+        title = titles[ field ]
+        size  = data_sizes[ field ]
+        dash_size = data_sizes[ field ] - padding
+        num_dash_spaces = size - dash_size
+        dash_title = ' ' * num_dash_spaces + '-' * dash_size
+        full_dash_title = full_dash_title + dash_title
+
+        format_str = "{0:>" + str(size) + "s}"
+        full_title = full_title + format_str.format( title.center( dash_size, ' ' ))
+
+    print full_title
+    print full_dash_title
+
+# now print the records
+
+if reverse_flag == True:
+    data = list( reversed( data ))
+
+cdr_keys = list( json_struct[ 'cdr' ][ 0 ] )    # just do it once
+count = 1
+for i in range(0, num_cdrs ):
+    cdr_record = "{0:-5d}".format( count )
+    for field in fields:
+        f = data[i][ field ]
+        size = data_sizes[ field ]
+
+        # See if we have to truncate the data.  This could happen if
+        # the user specifically gave a size in the config file
+
+        data_len = len( f )
+        if data_len > ( size - padding ):
+            slice_end = size - padding - 3
+            f = f[0:slice_end] + "..."
+
+        format_str = "{0:>" + str(size) + "s}"
+        cdr_record = cdr_record + format_str.format( f )
+
+    print cdr_record
+    count = count + 1
+
+if cost_flag == True:
+    accounts_duration = {}
+    accounts_costs    = {}
+    accounts_calls    = {}
+    total_cost        = 0
+    total_duration    = 0
+
+    for i in range( 0, num_cdrs ):
+        if 'account' in data[i]:
+            account = data[i]['account']
+            if account not in accounts_calls:
+                # initialize stuff
+                accounts_calls[ account ]    = 1
+                accounts_costs[ account ]    = float( data[i]['total'] )
+                accounts_duration[ account ] = int( data[i]['seconds'] )
+            else:
+                accounts_calls[ account ]    = accounts_calls[ account ] + 1
+                accounts_costs[ account ]    = accounts_costs[ account ] + float( data[i]['total'] )
+                accounts_duration[ account ] = accounts_duration[ account ] + int( data[i]['seconds'] )
+
+    for account in accounts_calls:
+        total_cost = total_cost + accounts_costs[ account ]
+        total_duration = total_duration + accounts_duration[ account ]
+
+    print ""
+    print "Total cost is ${0:.2f}".format( total_cost )
+    extra_info = ""
+    if total_duration > 60:
+        extra_info = " ({0:d} seconds)".format( total_duration )
+    print "Total duration of calls is {0:s}{1:s}".format( convert_seconds( total_duration ), extra_info )
+
+    total_accounts = len(list( accounts_calls ))
+    if account_name == "" and total_accounts != 1:
+        for account in accounts_calls:
+            print ""
+            print "Total cost of {0:d} calls for account \'{1:s}\' is ${2:.2f}". \
+                format( accounts_calls[ account ], account, accounts_costs[ account ] )
+
+            extra_info = ""
+            if accounts_duration[ account ] > 60:
+                extra_info = " ({0:d} seconds)".format( accounts_duration[ account ] )
+            print "Total duration of calls for account \'{0:s}\' is {1:s}{2:s}". \
+                format( account,  convert_seconds( accounts_duration[ account ] ), extra_info )
+
+sys.exit(0)

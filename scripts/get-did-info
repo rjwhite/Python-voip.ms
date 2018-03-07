@@ -1,0 +1,237 @@
+#!/usr/bin/env python
+
+# get DID info from voip.ms API
+
+#   get-did-info.py --help     - print options
+#   get-did-info.py            - print list of DID numbers
+#   get-did-info.py --account  - print list (sub)account:DID-number
+#   get-did-info.py --all      - print all data available about the DID(s)
+
+# Copyright 2018 RJ White
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# ---------------------------------------------------------------------
+
+# need 3rd party Config from github.com/rjwhite/Python-config-module
+# add the default path if they installed it as a normal user via
+#    python setup.py install --user=~
+
+import os
+import sys
+home = os.environ[ 'HOME' ]
+sys.path.append( home + '/lib/python' )
+import config
+
+import requests
+import json
+
+
+version         = 'v0.1'
+home            = os.environ[ 'HOME' ]
+config_file     = home + '/' + '.voip-ms.conf'
+did             = ""
+debug_flag      = False
+all_info_flag   = False
+account_flag    = False
+method          = 'getDIDsInfo'
+progname        = sys.argv[0]
+
+
+# debug function if --debug|-d option given
+
+def dprint( msg ):
+    global debug_flag
+
+    if debug_flag == False: return(0)
+    print msg
+    return(0) ;
+
+# handle command-line options.  No, I don't wanna use optparse
+
+num_args = len( sys.argv )
+i = 1
+while i < num_args:
+    try:
+        arg = sys.argv[i]
+        if arg == '-c' or arg == '--config':
+            i = i + 1 ;     config_file = sys.argv[i]
+        elif arg == '-D' or arg == '--did':
+            i = i + 1 ;     did = sys.argv[i]
+        elif arg == '-A' or arg == '--account':
+            account_flag = True
+        elif arg == '-d' or arg == '--debug':
+            debug_flag = True
+        elif arg == '-a' or arg == '--all':
+            all_info_flag = True
+        elif arg == '-h' or arg == '--help':
+            print "usage: {0:s} [options]*".format( sys.argv[0] )
+            print "\t[-a|--all]     (all info about did(s))"
+            print "\t[-c|--config]  config-file (default={0:s})".format( config_file )
+            print "\t[-d|--debug]   (debugging output)"
+            print "\t[-h|--help]    (help)"
+            print "\t[-A|--account] (print (sub)account name(s) instead of DID)"
+            print "\t[-D|--did]     DID-number (specific phone-number (which line))"
+            print "\t[-V|--version] (print version of this program)"
+            sys.exit(0)
+        elif arg == '-V' or arg == '--version':
+            print "version: {0:s}".format( version )
+            sys.exit(0)
+        else:
+            sys.stderr.write( "{0:s}: unknown option: {1:s}\n".format( progname, arg ))
+            sys.exit(1)
+
+    except IndexError as err:
+        sys.stderr.write( "{0:s}: {1:s}.  Missing argument value to \'{2:s}\'?\n". \
+            format( progname, err, arg ))
+        sys.exit(1)
+
+    i = i+1
+
+
+config.Config.set_debug( debug_flag )
+
+# no definitions file.  Our type info is all in our config file.
+try:
+    conf = config.Config( config_file, '', AcceptUndefinedKeywords=True )
+except ( IOError, SyntaxError, ValueError ) as err:
+    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+    sys.exit(1)
+
+dprint( "Config data read ok.  woohoo." )
+
+
+# make sure we have our mandatory sections
+num_errors = 0
+needed_sections = [ 'authentication' ]
+sections = conf.get_sections()
+for section in needed_sections:
+    if section not in sections:
+        num_errors = num_errors + 1
+        sys.stderr.write( "{0:s}: missing section \'{1:s}\' in {2:s}\n". \
+            format( progname, section, config_file ))
+
+if num_errors > 0:
+    sys.exit(1)
+
+# make sure we have our mandatory keywords for authentication
+keywords_i_need = [ 'user', 'pass' ]
+keywords = conf.get_keywords( 'authentication' )
+for keyword in keywords_i_need:
+    if keyword not in keywords:
+        num_errors = num_errors + 1
+        sys.stderr.write( "{0:s}: missing keyword \'{1:s}\' in section \'authentication\' in {2:s}\n". \
+            format( progname, keyword, config_file ))
+
+if num_errors > 0:
+    sys.exit(1)
+
+userid   = conf.get_values( 'authentication', 'user' )
+password = conf.get_values( 'authentication', 'pass' )
+
+dprint( "user\t= {0:s}".format( userid ))
+dprint( "pass\t= {0:s}".format( password ))
+
+# see if DID is given, and if so, format it correctly
+
+if did != "":
+    dprint( "DID number was given as a command-line option: {0:s}".format( did ))
+    did = did.replace( '-', '' )        # remove dashes
+    did = did.replace( ' ', '' )        # remove spaces
+
+    if did.isdigit() == False:
+        sys.stderr.write( "{0:s}: DID is not numeric: {1:s}\n".format( progname, str(did)))
+        sys.exit(1)
+
+    dprint( "Command-line option DID number is now: {0:s}".format( did ))
+
+if did != "":
+    dprint( "Final DID number being used is {0:s}".format( did ))
+
+# build the URL 
+url = "https://voip.ms/api/v1/rest.php" + \
+        "?api_username={0:s}&api_password={1:s}&method={2:s}". \
+            format( userid, password, method )
+
+if did != "":
+    url = url + "&did={0:s}".format( did )
+
+dprint( "URL = " + url )
+
+try:
+    res = requests.get( url )
+    json_data = res.text.encode( 'ascii' )
+    json_struct = json.loads( json_data )
+except ( IOError, SyntaxError, ValueError ) as err:
+    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, str(err)))
+    sys.exit(1)
+
+status = str ( json_struct[ 'status' ] )
+if status != 'success':
+    sys.stderr.write( "{0:s}: Failed status: {1:s}\n".format( progname, status ))
+    sys.exit(1)
+
+dprint( 'status = ' + status )
+
+# get number of DIDs returned
+
+num_dids = len( json_struct[ 'dids' ] )
+dprint( "Number of DIDs found is " + str( num_dids ))
+
+# we want to figure out the maximum length of the keywords.
+# and we only want to do it once, so only the first DID is used
+
+did_keys = list( json_struct[ 'dids' ][ 0 ] )
+max_key_len = len( max( did_keys, key=len ))
+
+# now get our data
+
+i = 0
+for d in json_struct[ 'dids' ]:
+    try:
+        line = json_struct[ 'dids' ][ i ][ 'did' ]
+    except ( KeyError ) as err:
+        dprint( "Could not get DID (line) name: {0:s}. skipping.".format( err ))
+        continue
+
+    try:
+        account = json_struct[ 'dids' ][ i ][ 'routing' ]
+    except ( KeyError ) as err:
+        dprint( "Could not get routing (account) name: {0:s}".format( err ))
+        dprint( "Setting account to \'unknown\'" ) 
+        account = 'unknown'
+
+    if account_flag == True:
+        account = account.replace( 'account:', '' )
+        did_info = account + ':' + line
+    else:
+        did_info = line
+
+    print did_info
+
+    # now print the rest of the data
+    if all_info_flag:
+        for did_field in did_keys:
+            try:
+                v = str( json_struct[ 'dids' ][ i ][ did_field ] )
+            except ( KeyError ) as err:
+                dprint( "Could not get value for {0:s}. Setting to empty string".format( did_field))
+                v = ""
+
+            format_str = "\t{0:" + str( max_key_len ) + "s}    {1:s}"
+            print format_str.format( did_field, v )
+
+        if num_dids > 1: print "" 
+
+    i = i + 1
+
+sys.exit(0)

@@ -1,0 +1,18 @@
+Install the .voip-ms.conf config file into your $HOME directory after
+making appropriate changes.  At a minimum, the user, pass and did fields.
+
+Please see https://voip.ms/m/api.php to set up API access to your service.
+You need to specify the IP to accept requests from.
+
+You need the Config module which you can get from:
+    http://github.com/rjwhite/Python-config-module
+It can be installed from its installation directory with 'make install'.
+It is a single file Python library module.
+
+Install this software with 'make install'.
+If you install it as root, it will install into /usr/local/bin.
+If you don't install it as root, it will be installed in your $HOME/bin
+
+The program write-phone-CDR-records.sh can be used to call from the
+crontab at the beginning of the month to get and save CDR reports for each
+DID you have each month.
