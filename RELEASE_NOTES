@@ -1,3 +1,11 @@
 0.1     Mar 6, 2018
         initial version
 
+0.2     May 6, 2018
+        scripts/get-cdrs:
+        wrap a separate try/except clause around trying to open a
+        connection to catch all exceptions so it doesn't explode, printing
+        out the whole URL - which includes the userid and password.
+
+        setup.py:
+        updated 'version'

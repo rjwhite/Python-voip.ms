@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup( 
     name                = "python-voip.ms",
-    version             = "0.1",
+    version             = "0.2",
     scripts             = [ 'scripts/black-list', 'scripts/get-cdrs', 'scripts/get-did-info', 'scripts/write-phone-CDR-records' ],
     author              = "RJ White",
     author_email        = "rj@moxad.com",

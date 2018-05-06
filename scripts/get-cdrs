@@ -547,6 +547,11 @@ dprint( "URL = \'" + url + "\'" )
 
 try:
     res = requests.get( url )
+except:
+    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, "Could not open connection. Network down?" ))
+    sys.exit(1)
+
+try:
     json_data = res.text.encode( 'ascii' )
     json_struct = json.loads( json_data )
 except ( IOError, SyntaxError, ValueError ) as err:
