@@ -6,5 +6,6 @@ include RELEASE_NOTES
 include doc/man/man1/black-list.1
 include doc/man/man1/get-cdrs.1
 include doc/man/man1/get-did-info.1
+include doc/man/man1/send-sms-message.1
 include .voip-ms.conf
 

@@ -2,10 +2,34 @@
         initial version
 
 0.2     May 6, 2018
-        scripts/get-cdrs:
-        wrap a separate try/except clause around trying to open a
-        connection to catch all exceptions so it doesn't explode, printing
-        out the whole URL - which includes the userid and password.
+        - scripts/get-cdrs:
+          - wrap a separate try/except clause around trying to open a
+            connection to catch all exceptions so it doesn't explode, printing
+            out the whole URL - which includes the userid and password.
+        - setup.py:
+          - updated 'version'
 
-        setup.py:
-        updated 'version'
+0.3     Dec 14, 2019
+        Created send-sms-message, which is option compatible with the Perl
+        version in the Perl-voip.ms package at github.com/rjwhite/Perl-voip.ms
+        and uses the same (copied) man page.
+
+        - scripts/send-sms-message:
+          - written
+        - .voip-ms.conf
+          - added 'sms' section
+        - doc/man/man1/black-list.1:
+        - doc/man/man1/get-cdrs.1:
+        - doc/man/man1/get-did-info.1:
+          - added send-sms-message(1)
+        - doc/man/man1/send-sms-message.1
+          - created
+        - RELEASE_NOTES:
+          - formating changes
+        - setup.py:
+          - updated 'version'
+          - added scripts/send-sms-message to 'scripts'
+        - README.md, README.txt:
+          - added example for send-sms-message
+        - MANIFEST.in:
+          - added doc/man/man1/send-sms-message.1

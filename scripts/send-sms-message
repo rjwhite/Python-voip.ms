@@ -1,0 +1,380 @@
+#!/usr/bin/env python2
+
+# send a SMS message
+# Uses a config file for authentication and defaults
+
+# Any arguments that are not options, are concatonated together
+# with a single space separator to make up the message.  For eg:
+#   send-sms-message test -r alfred gabba gabba -l main-DID hey
+# will send "test gabba gabba hey" to 'alfred' from line 'main-DID'
+# 'alfred' and 'main-DID' are aliases set in the config file.
+
+# This needs the config module found on github.com under user rjwhite
+#   https://github.com/rjwhite/Python-config-module
+
+# Examples:
+# send-sms-message --help
+# send-sms-message --recipient 555-123-4567 pick up some butter-tarts
+# send-sms-message -r my-wife "I sold the kids"
+
+# Copyright 2019 RJ White
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# ---------------------------------------------------------------------
+
+import sys
+import re
+import os
+import requests
+import json
+import urllib
+
+progname      = sys.argv[0]
+home          = os.environ[ 'HOME' ]
+version       = "v0.1"
+config_module = "https://github.com/rjwhite/Python-config-module"
+did_number    = ""          # the number we send the message FROM
+debug_flag    = False
+
+# need config module from https://github.com/rjwhite/Python-config-module
+
+sys.path.append( home + '/lib/python' )
+try:
+    import config
+except ImportError as err:
+    sys.stderr.write( "{0:s}: Please install config module\n". \
+        format( progname ))
+    sys.stderr.write( "{0:s}: can be obtained from {1:s}\n". \
+        format( progname, config_module ))
+    sys.exit(1)
+
+# Look for a config file in the HOME directory.
+# Otherwise, it will look in the current directory
+
+confile_file  = ".voip-ms.conf"
+if home:
+    config_file = home + '/' + ".voip-ms.conf"
+
+class BadWebCall( Exception ): pass
+
+
+
+# debug function if --debug|-d option given
+#
+# Arguments:
+#   string to print
+# Returns:
+#   0
+# Exceptions:
+#   none
+
+def dprint( str ):
+    if debug_flag == False:
+        return 0
+
+    print "debug: {0:s}".format( str )
+    return 0
+
+
+# send a URL to the Voip.ms API
+#
+# Arguments:
+#   1:  URL
+# Returns:
+#   JSON structure
+# Exceptions:
+#   BadWebCall
+
+def send_request( url ):
+    my_name = sys._getframe().f_code.co_name
+
+    dprint( "{0:s}(): URL = {1:s}".format( my_name, url ))
+
+    try:
+        res = requests.get( url )
+        json_data = res.text.encode( 'ascii' )
+        json_struct = json.loads( json_data )
+        status = str( json_struct[ 'status' ] )
+    except ( KeyboardInterrupt, IOError, SyntaxError, ValueError ) as err:
+        raise BadWebCall( "{0:s}(): {1:s}\n".format( my_name, err ))
+
+    if status != 'success':
+        raise BadWebCall( "{0:s}(): Failed status: {1:s}". \
+            format( my_name, status ))
+
+    dprint( "{0:s}(): status = {1:s}".format( my_name, status ))
+
+    return( json_struct )
+
+
+# print usage
+#
+# Arguments:
+#   none
+# Returns:
+#   0
+# Exceptions:
+#   none
+
+def usage():
+    print "usage: send-sms-message [option]* -r recipient message-to-send"
+    print "\t[-c|--config file]   (config-file. default={0:s}". \
+        format( config_file )
+    print "\t[-d|--debug]         (debugging output)"
+    print "\t[-n|--no-send]       (don't send the message, but show URL to send)"
+    print "\t[-h|--help]          (help)"
+    print "\t[-l|--line]          sender DID-phone-number (default={0:s})". \
+        format( did_number )
+    print "\t[-V|--version]       (print version)"
+    print "\t-r|--recipient phone-number"
+
+    return(0)
+
+
+# main program
+#
+# Arguments:
+#   none
+# Returns:
+#   0:  ok
+#   1:  not ok
+# Exceptions:
+#   none
+
+def main():
+    global debug_flag, config_file, did_number
+
+    # defaults
+
+    line_number     = ""        # DID number to send message from
+    recipient       = ""        # phone number to send messag to
+    dont_send_flag  = False     # don't send the message, just print URL
+    want_help_flag  = False     # set if -h/--help option used
+    message = ""                # the message to send.
+
+    # process options
+
+    num_args = len( sys.argv )
+    i = 1
+    while i < num_args:
+        try:
+            arg = sys.argv[i]
+
+            m = re.match( '^-', arg )
+            if not m:
+                if message != "":
+                    message = message + ' '
+                message = message + arg
+
+                i += 1
+                continue
+
+            if arg == '-d' or arg == '--debug':
+                debug_flag = True
+            elif arg == '-n' or arg == '--no-send':
+                dont_send_flag = True
+            elif arg == '-V' or arg == '--version':
+                print "version: {0:s}".format( version )
+                return(0)
+            elif arg == '-c' or arg == '--config':
+                i += 1
+                config_file = sys.argv[i] 
+            elif arg == '-r' or arg == '--recipient':
+                i += 1
+                recipient = sys.argv[i] 
+            elif arg == '-l' or arg == '--line':
+                i += 1
+                did_number = sys.argv[i] 
+            elif arg == '-h' or arg == '--help':
+                want_help_flag = True
+            else:
+                sys.stderr.write( "{0:s}: no such option: {1:s}\n". \
+                    format( progname, arg ) )
+                return(1)
+
+            i += 1
+        except IndexError as err:
+            sys.stderr.write( "{0:s}: missing value for option {1:s}\n". \
+                format( progname, arg ))
+            return(1)
+
+    config.Config.set_debug( debug_flag )
+
+    # no definitions file.  Our type info is all in our config file.
+    try:
+        conf = config.Config( config_file, '', AcceptUndefinedKeywords=True )
+    except ( IOError, SyntaxError, ValueError ) as err:
+        sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+        return(1)
+
+    dprint( "Config data read OK.  double-plus woohoo." )
+
+    # make sure we have our mandatory sections
+    needed_sections = [ 'authentication', 'sms' ]
+    sections = conf.get_sections()
+    num_errs = 0
+    for section in needed_sections:
+        if section not in sections:
+            num_errs += 1
+            sys.stderr.write( "{0:s}: missing section \'{1:s}\' in {2:s}\n". \
+                format( progname, section, config_file ))
+
+    if num_errs:
+        return(1)
+
+    # make sure we have our mandatory keywords for authentication
+    keywords_i_need = [ 'user', 'pass' ]
+    keywords = conf.get_keywords( 'authentication' )
+    for keyword in keywords_i_need:
+        if keyword not in keywords:
+            num_errs += 1
+            err = "missing keyword \'{1:s}\' in section \'authentication\' in {2:s}". \
+                format( keyword, config_file )
+            sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+
+    if num_errs:
+        return(1)
+
+    # We know these exist from the above mandatory checks
+    userid   = conf.get_values( 'authentication', 'user' )
+    password = conf.get_values( 'authentication', 'pass' )
+
+    dprint( "user = {0:s}".format( userid ))
+    dprint( "pass = {0:s}".format( password ))
+
+    # now get the line number we will send texts from
+    try:
+        did = conf.get_values( 'sms', 'did' )
+    except ValueError as err:
+        err = "Missing \'did\' keyword in section \'sms\' in {0:s}". \
+            format( config_file )
+        sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+        return(1)
+
+    if did_number != "":
+        msg = "preferring DID from option " + \
+              " ({0:s}) over DID from config file ({1:s})". \
+              format( did_number, did )
+        dprint( msg )
+    else:
+        did_number = did
+
+    dprint( "using DID \'{0:s}\' to send message from".format( did ))
+
+    # now that we've resolved our DID number, whether from the config
+    # file or an option, we can now properly print our usage if the
+    # user asked for it
+
+    if want_help_flag:
+        usage()
+        return(0)
+
+    # sanity checking
+
+    if recipient == "":
+        sys.stderr.write( "{0:s}: need to provide --recipient option\n".
+            format( progname ))
+        num_errs += 1
+
+    if message == "":
+        sys.stderr.write( "{0:s}: need to provide a message to send\n".
+            format( progname ))
+        num_errs += 1
+
+    if num_errs:
+        return(1)
+
+    dprint( "config file is {0:s}".format( config_file ))
+    dprint( "message is now \"{0:s}\"".format( message ))
+    dprint( "recipient is \'{0:s}\'".format( recipient ))
+    dprint( "DID number is \'{0:s}\'".format( did_number ))
+
+    # see if there are aliases
+
+    aliases = {}
+    try:
+        aliases = conf.get_values( 'sms', 'aliases' )
+    except ValueError as err:
+        pass
+
+    if did_number in aliases:
+        dprint( "found DID \'{0:s}\' in aliases!".format( did_number ))
+        did_number = aliases[ did_number ]
+        dprint( "DID number to send text FROM is now \'{0:s}\'". \
+            format( did_number ))
+
+    if recipient in aliases:
+        dprint( "found recipient \'{0:s}\' in aliases!".format( recipient ))
+        recipient = aliases[ recipient ]
+        dprint( "recipient number to send text TO is now \'{0:s}\'". \
+            format( recipient ))
+
+
+    # now remove any spaces and dashes from the phone numbers
+
+    recipient = recipient.replace( '-', '' )        # remove dashes
+    recipient = recipient.replace( ' ', '' )        # remove dashes
+    m = re.match( "^\d+$", recipient )
+    if not m:
+        err = "recipient phone number must be digits: \'{0:s}\'.". \
+            format( recipient )
+        sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+        return(1)
+
+    did_number = did_number.replace( '-', '' )        # remove dashes
+    did_number = did_number.replace( ' ', '' )        # remove dashes
+    m = re.match( "^\d+$", did_number )
+    if not m:
+        err = "DID phone number must be digits: \'{0:s}\'.". \
+            format( did_number )
+        sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+        return(1)
+
+    # we now have all the info we need to send the message
+
+    # build the base URL
+
+    base_url = "https://voip.ms/api/v1/rest.php" + \
+            "?api_username={0:s}&api_password={1:s}". \
+                format( userid, password )
+    dprint( "BASE URL = " + base_url )
+
+    # escape the message
+    message = urllib.quote( message )
+
+    # add to the rest of the URL
+    method = 'sendSMS'
+    url = base_url + "&method={0:s}&dst={1:s}&did={2:s}&message={3:s}". \
+        format( method, recipient, did_number, message )
+
+    if dont_send_flag:
+        print 'URL = ' + url
+        return(0)
+
+    # send the request
+
+    try:
+        json_struct = send_request( url )
+    except BadWebCall as err:
+        sys.stderr.write( "{0:s}: {1:s}\n".format( progname, str(err)))
+        return(1)
+
+    # if we appeared to make the call ok, then we're done
+
+    return 0
+
+
+if main():
+    sys.exit(1)
+else:
+    sys.exit(0)

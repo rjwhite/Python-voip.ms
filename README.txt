@@ -32,6 +32,11 @@ Example usages:
 
         % black-list --hangup --filterid 12345
 
+
+    This will send a SMS message to barney (an alias set up in the config file):
+
+        % send-sms-message -r barney Time for a beer
+
     This will print all data about each DID, with the phone-number preceded by the (sub)account-name
 
         % get-did-info --account --all
