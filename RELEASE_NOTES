@@ -33,3 +33,12 @@
           - added example for send-sms-message
         - MANIFEST.in:
           - added doc/man/man1/send-sms-message.1
+
+0.4     Dec 16, 2019
+        - made all scripts Python 3 compliant.
+        - more error handling.  Some refactoring.
+        - more useful info provided if config or requests modules can not
+          be imported
+        - added 'sdist' target to Makefile
+        - added REQUIREMENTS
+        - added 'REQUIREMENTS' to MANIFEST.in

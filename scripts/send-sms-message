@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 # send a SMS message
 # Uses a config file for authentication and defaults
@@ -32,19 +32,32 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # ---------------------------------------------------------------------
 
+
 import sys
+
+progname      = sys.argv[0]
+
+try:
+    import requests
+except ImportError as err:
+    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
+    sys.stderr.write( "{0}: You may need to do a \'pip3 install requests\'\n". \
+        format( progname ))
+    sys.exit(1)
+
 import re
 import os
-import requests
 import json
 import urllib
 
-progname      = sys.argv[0]
 home          = os.environ[ 'HOME' ]
-version       = "v0.1"
+version       = "v0.2"      # program version - not the package version
 config_module = "https://github.com/rjwhite/Python-config-module"
 did_number    = ""          # the number we send the message FROM
 debug_flag    = False
+
+PY2 = sys.version_info[0] == 2
+PY3 = sys.version_info[0] == 3
 
 # need config module from https://github.com/rjwhite/Python-config-module
 
@@ -82,7 +95,7 @@ def dprint( str ):
     if debug_flag == False:
         return 0
 
-    print "debug: {0:s}".format( str )
+    print( "debug: {0:s}".format( str ))
     return 0
 
 
@@ -103,10 +116,10 @@ def send_request( url ):
     try:
         res = requests.get( url )
         json_data = res.text.encode( 'ascii' )
-        json_struct = json.loads( json_data )
+        json_struct = json.loads( json_data.decode('utf-8'))
         status = str( json_struct[ 'status' ] )
-    except ( KeyboardInterrupt, IOError, SyntaxError, ValueError ) as err:
-        raise BadWebCall( "{0:s}(): {1:s}\n".format( my_name, err ))
+    except Exception as err:
+        raise BadWebCall( "{0}(): {1}".format( my_name, err ))
 
     if status != 'success':
         raise BadWebCall( "{0:s}(): Failed status: {1:s}". \
@@ -127,16 +140,16 @@ def send_request( url ):
 #   none
 
 def usage():
-    print "usage: send-sms-message [option]* -r recipient message-to-send"
-    print "\t[-c|--config file]   (config-file. default={0:s}". \
-        format( config_file )
-    print "\t[-d|--debug]         (debugging output)"
-    print "\t[-n|--no-send]       (don't send the message, but show URL to send)"
-    print "\t[-h|--help]          (help)"
-    print "\t[-l|--line]          sender DID-phone-number (default={0:s})". \
-        format( did_number )
-    print "\t[-V|--version]       (print version)"
-    print "\t-r|--recipient phone-number"
+    print( "usage: send-sms-message [option]* -r recipient message-to-send" )
+    print( "\t[-c|--config file]   (config-file. default={0:s}". \
+        format( config_file ))
+    print( "\t[-d|--debug]         (debugging output)" )
+    print( "\t[-n|--no-send]       (don't send the message, but show URL to send)" )
+    print( "\t[-h|--help]          (help)" )
+    print( "\t[-l|--line]          sender DID-phone-number (default={0:s})". \
+        format( did_number ))
+    print( "\t[-V|--version]       (print version)" )
+    print( "\t-r|--recipient phone-number" )
 
     return(0)
 
@@ -184,7 +197,7 @@ def main():
             elif arg == '-n' or arg == '--no-send':
                 dont_send_flag = True
             elif arg == '-V' or arg == '--version':
-                print "version: {0:s}".format( version )
+                print( "version: {0:s}".format( version ))
                 return(0)
             elif arg == '-c' or arg == '--config':
                 i += 1
@@ -213,8 +226,8 @@ def main():
     # no definitions file.  Our type info is all in our config file.
     try:
         conf = config.Config( config_file, '', AcceptUndefinedKeywords=True )
-    except ( IOError, SyntaxError, ValueError ) as err:
-        sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+    except Exception as err:
+        sys.stderr.write( "{0}: {1}\n".format( progname, err ))
         return(1)
 
     dprint( "Config data read OK.  double-plus woohoo." )
@@ -350,7 +363,11 @@ def main():
     dprint( "BASE URL = " + base_url )
 
     # escape the message
-    message = urllib.quote( message )
+    if PY2:
+        message = urllib.quote( message )
+    if PY3:
+        message = urllib.parse.quote( message )
+
 
     # add to the rest of the URL
     method = 'sendSMS'
@@ -358,7 +375,7 @@ def main():
         format( method, recipient, did_number, message )
 
     if dont_send_flag:
-        print 'URL = ' + url
+        print( 'URL = ' + url )
         return(0)
 
     # send the request

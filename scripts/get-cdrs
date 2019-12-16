@@ -24,23 +24,47 @@
 
 import os
 import sys
-home = os.environ[ 'HOME' ]
-sys.path.append( home + '/lib/python' )
-import config
-
-import requests
 import json
 import time
 import re
 from datetime import date
 import datetime
 
+progname = sys.argv[0]
+home = os.environ[ 'HOME' ]
+config_module = "https://github.com/rjwhite/Python-config-module"
+
+try:
+    import requests
+except ImportError as err:
+    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
+    sys.stderr.write( "{0}: You may need to do a \'pip install requests\'\n". \
+        format( progname ))
+    sys.exit(1)
+
+# need config module from https://github.com/rjwhite/Python-config-module
+
+sys.path.append( home + '/lib/python' )
+try:
+    import config
+except ImportError as err:
+    sys.stderr.write( "{0:s}: Please install config module\n". \
+        format( progname ))
+    sys.stderr.write( "{0:s}: can be obtained from {1:s}\n". \
+        format( progname, config_module ))
+    sys.exit(1)
+
+PY2 = sys.version_info[0] == 2
+PY3 = sys.version_info[0] == 3
+
+class BadWebCall( Exception ): pass
+
 # constants
 
 FROM_DATE       = 0
 TO_DATE         = 1
 
-version         = 'v0.1'
+version         = 'v0.2'
 home            = os.environ[ 'HOME' ]
 config_file     = home + '/' + '.voip-ms.conf'
 cost_flag       = False
@@ -54,7 +78,6 @@ to_date         = ""
 last_month_flag = False
 this_month_flag = False
 padding         = 3
-progname        = sys.argv[0]
 
 class InvalidArgument( Exception ): pass
 class ShouldBeEmpty_String( Exception ): pass
@@ -74,7 +97,7 @@ def dprint( msg ):
     global debug_flag
 
     if debug_flag == False: return(0)
-    print msg
+    print( msg )
     return(0) ;
 
 
@@ -149,8 +172,8 @@ def pretty_date( dayt ):
 
 
 
-# Convert a date of format YYYY-MM-DD into number of seconds since Unix epoch
-# such as '2017-02-04' -> 1517720400
+# Convert a date of format YYYY-MM-DD into number of seconds since Unix
+# epoch such as '2017-02-04' -> 1517720400
 #
 # Arguments:
 #    1: date of format YYYY-MM-DD
@@ -164,11 +187,13 @@ def seconds_since_epoch( dayt ):
 
     try:
         year, month, day = dayt.split("-")
-        d = datetime.datetime( int(year), int(month), int(day), 0, 0).strftime('%s')
+        d = datetime.datetime( int(year), int(month), int(day), 0, 0). \
+            strftime('%s')
     except:
-        raise InvalidDate( "{0:s}(): Bad date. input was \'{1:s}\'".format( my_name, dayt ))
+        raise InvalidDate( "{0:s}(): Bad date. input was \'{1:s}\'". \
+            format( my_name, dayt ))
 
-    return( long( d ))
+    return( d )
 
 
 
@@ -302,6 +327,37 @@ def is_leap_year( year ):
         return(0)
 
 
+# send a URL to the Voip.ms API
+#
+# Arguments:
+#   1:  URL
+# Returns:
+#   JSON structure
+# Exceptions:
+#   BadWebCall
+
+def send_request( url ):
+    my_name = sys._getframe().f_code.co_name
+
+    dprint( "{0:s}(): URL = {1:s}".format( my_name, url ))
+
+    try:
+        res = requests.get( url )
+        json_data = res.text.encode( 'ascii' )
+        json_struct = json.loads( json_data.decode('utf-8'))
+        status = str( json_struct[ 'status' ] )
+    except Exception as err:
+        raise BadWebCall( "{0}(): {1}".format( my_name, err ))
+
+    if status != 'success':
+        raise BadWebCall( "{0:s}(): Failed status: {1:s}". \
+            format( my_name, status ))
+
+    dprint( "{0:s}(): status = {1:s}".format( my_name, status ))
+
+    return( json_struct )
+
+
 # handle command-line options.  No, I don't wanna use optparse
 
 num_args = len( sys.argv )
@@ -336,28 +392,28 @@ while i < num_args:
         elif arg == '-q' or arg == '--quiet':
             quiet_flag = True
         elif arg == '-s' or arg == '--sheldon':
-            print "Bazinga!"
+            print( "Bazinga!" )
             sys.exit(0)
         elif arg == '-V' or arg == '--version':
-            print "version: {0:s}".format( version )
+            print( "version: {0:s}".format( version ))
             sys.exit(0)
         elif arg == '-h' or arg == '--help':
-            print "usage: {0:s} [options]*".format( sys.argv[0] )
-            print "\t[-a|--account]     account name"
-            print "\t[-c|--config]      config-file (default={0:s})".format( config_file )
-            print "\t[-d|--debug]       (debugging output)"
-            print "\t[-f|--from]        YYYY-MM-DD (FROM date)"
-            print "\t[-h|--help]        (help)"
-            print "\t[-p|--padding]     number (padding between output fields (default={0:d})". \
-                format( padding )
-            print "\t[-q|--quiet]       (quiet.  No headings and titles)"
-            print "\t[-r|--reverse]     (reverse date order of CDR output)"
-            print "\t[-s|--sheldon]"
-            print "\t[-T|--to]          YYYY-MM-DD (TO date)"
-            print "\t[-C|--cost]        (total up costs and duration of CDRs)"
-            print "\t[-L|--last-month]  (want CDR records for LAST month)"
-            print "\t[-T|--this-month]  (want CDR records for THIS month)"
-            print "\t[-V|--version]     (print version of this program)"
+            print( "usage: {0:s} [options]*".format( sys.argv[0] ))
+            print( "\t[-a|--account]     account name" )
+            print( "\t[-c|--config]      config-file (default={0:s})".format( config_file ))
+            print( "\t[-d|--debug]       (debugging output)" )
+            print( "\t[-f|--from]        YYYY-MM-DD (FROM date)" )
+            print( "\t[-h|--help]        (help)" )
+            print( "\t[-p|--padding]     number (padding between output fields (default={0:d})". \
+                format( padding ))
+            print( "\t[-q|--quiet]       (quiet.  No headings and titles)" )
+            print( "\t[-r|--reverse]     (reverse date order of CDR output)" )
+            print( "\t[-s|--sheldon]" )
+            print( "\t[-T|--to]          YYYY-MM-DD (TO date)" )
+            print( "\t[-C|--cost]        (total up costs and duration of CDRs)" )
+            print( "\t[-L|--last-month]  (want CDR records for LAST month)" )
+            print( "\t[-T|--this-month]  (want CDR records for THIS month)" )
+            print( "\t[-V|--version]     (print version of this program)" )
             sys.exit(0)
         else:
             sys.stderr.write( "{0:s}: unknown option: {1:s}\n".format( progname, arg ))
@@ -455,8 +511,8 @@ config.Config.set_debug( debug_flag )
 # no definitions file.  Our type info is all in our config file.
 try:
     conf = config.Config( config_file, '', AcceptUndefinedKeywords=True )
-except ( IOError, SyntaxError, ValueError ) as err:
-    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+except Exception as err:
+    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
     sys.exit(1)
 
 dprint( "Config data read ok.  woohoo." )
@@ -546,22 +602,15 @@ url = "https://voip.ms/api/v1/rest.php" + \
 dprint( "URL = \'" + url + "\'" )
 
 try:
-    res = requests.get( url )
-except:
-    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, "Could not open connection. Network down?" ))
-    sys.exit(1)
-
-try:
-    json_data = res.text.encode( 'ascii' )
-    json_struct = json.loads( json_data )
-except ( IOError, SyntaxError, ValueError ) as err:
-    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, str(err)))
+    json_struct = send_request( url )
+except BadWebCall as err:
+    sys.stderr.write( "{0}: {1}\n".format( progname, str(err)))
     sys.exit(1)
 
 status = str ( json_struct[ 'status' ] )
 if status == 'no_cdr':
-    print "No CDR records were found from {0:s} to {1:s}". \
-        format( pretty_date( from_date ), pretty_date( to_date ))
+    print( "No CDR records were found from {0:s} to {1:s}". \
+        format( pretty_date( from_date ), pretty_date( to_date )))
     sys.exit(0)
 
 if status != 'success':
@@ -576,12 +625,12 @@ dprint( 'status = ' + status )
 num_cdrs = len( json_struct[ 'cdr' ] )
 dprint( "Number of CDRs found is " + str( num_cdrs ))
 if num_cdrs == 0:
-    print "No CDR records were found"
+    print( "No CDR records were found" )
     sys.exit(0)
 
 if quiet_flag == False:
-    print "{0:d} CDR records found from {1:s} to {2:s}\n". \
-        format( num_cdrs, pretty_date( from_date ), pretty_date( to_date ))
+    print( "{0:d} CDR records found from {1:s} to {2:s}\n". \
+        format( num_cdrs, pretty_date( from_date ), pretty_date( to_date )))
 
 
 # we want to figure out the maximum length of the data in the event that
@@ -648,8 +697,8 @@ if quiet_flag == False:
         format_str = "{0:>" + str(size) + "s}"
         full_title = full_title + format_str.format( title.center( dash_size, ' ' ))
 
-    print full_title
-    print full_dash_title
+    print( full_title )
+    print( full_dash_title )
 
 # now print the records
 
@@ -675,7 +724,7 @@ for i in range(0, num_cdrs ):
         format_str = "{0:>" + str(size) + "s}"
         cdr_record = cdr_record + format_str.format( f )
 
-    print cdr_record
+    print( cdr_record )
     count = count + 1
 
 if cost_flag == True:
@@ -702,24 +751,25 @@ if cost_flag == True:
         total_cost = total_cost + accounts_costs[ account ]
         total_duration = total_duration + accounts_duration[ account ]
 
-    print ""
-    print "Total cost is ${0:.2f}".format( total_cost )
+    print( "" )
+    print( "Total cost is ${0:.2f}".format( total_cost ))
     extra_info = ""
     if total_duration > 60:
         extra_info = " ({0:d} seconds)".format( total_duration )
-    print "Total duration of calls is {0:s}{1:s}".format( convert_seconds( total_duration ), extra_info )
+    print( "Total duration of calls is {0:s}{1:s}". \
+        format( convert_seconds( total_duration ), extra_info ))
 
     total_accounts = len(list( accounts_calls ))
     if account_name == "" and total_accounts != 1:
         for account in accounts_calls:
-            print ""
-            print "Total cost of {0:d} calls for account \'{1:s}\' is ${2:.2f}". \
-                format( accounts_calls[ account ], account, accounts_costs[ account ] )
+            print( "" )
+            print( "Total cost of {0:d} calls for account \'{1:s}\' is ${2:.2f}". \
+                format( accounts_calls[ account ], account, accounts_costs[ account ] ))
 
             extra_info = ""
             if accounts_duration[ account ] > 60:
                 extra_info = " ({0:d} seconds)".format( accounts_duration[ account ] )
-            print "Total duration of calls for account \'{0:s}\' is {1:s}{2:s}". \
-                format( account,  convert_seconds( accounts_duration[ account ] ), extra_info )
+            print( "Total duration of calls for account \'{0:s}\' is {1:s}{2:s}". \
+                format( account,  convert_seconds( accounts_duration[ account ] ), extra_info ))
 
 sys.exit(0)

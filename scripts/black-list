@@ -30,15 +30,35 @@
 
 import os
 import sys
-home = os.environ[ 'HOME' ]
-sys.path.append( home + '/lib/python' )
-import config
-
 import re
-import requests
 import json
 import urllib
 
+progname      = sys.argv[0]
+
+try:
+    import requests
+except ImportError as err:
+    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
+    sys.stderr.write( "{0}: You may need to do a \'pip3 install requests\'\n". \
+        format( progname ))
+    sys.exit(1)
+
+home = os.environ[ 'HOME' ]
+sys.path.append( home + '/lib/python' )
+
+config_module = "https://github.com/rjwhite/Python-config-module"
+try:
+    import config
+except ImportError as err:
+    sys.stderr.write( "{0:s}: Please install config module\n". \
+        format( progname ))
+    sys.stderr.write( "{0:s}: can be obtained from {1:s}\n". \
+        format( progname, config_module ))
+    sys.exit(1)
+
+PY2 = sys.version_info[0] == 2
+PY3 = sys.version_info[0] == 3
 
 ROUTING_NO_SERVICE   = "noservice"
 ROUTING_BUSY         = "busy"
@@ -53,8 +73,10 @@ delete_flag     = False
 set_flag        = False
 update_flag     = False
 
-version         = 'v0.1'
-config_file     = home + '/' + '.voip-ms.conf'
+version         = 'v0.2'
+confile_file  = ".voip-ms.conf"
+if home:
+    config_file = home + '/' + ".voip-ms.conf"
 caller_id       = None
 filter_id       = None
 progname        = sys.argv[0]
@@ -89,7 +111,7 @@ def dprint( msg ):
     global debug_flag
 
     if debug_flag == False: return(0)
-    print msg
+    print( msg )
     return(0) ;
 
 
@@ -110,16 +132,16 @@ def send_request( url ):
     try:
         res = requests.get( url )
         json_data = res.text.encode( 'ascii' )
-        json_struct = json.loads( json_data )
+        json_struct = json.loads( json_data.decode('utf-8'))
         status = str( json_struct[ 'status' ] )
-    except ( KeyboardInterrupt, IOError, SyntaxError, ValueError ) as err:
-        raise BadWebCall( "{0:s}(): {1:s}\n".format( my_name, err ))
+    except Exception as err:
+        raise BadWebCall( "{0}(): {1}".format( my_name, err ))
 
     if status != 'success':
-        raise BadWebCall( "{0:s}(): Failed status: {1:s}". \
+        raise BadWebCall( "{0}(): Failed status: {1}". \
             format( my_name, status ))
 
-    dprint( "{0:s}(): status = {1:s}".format( my_name, status ))
+    dprint( "{0}(): status = {1}".format( my_name, status ))
 
     return( json_struct )
 
@@ -136,22 +158,22 @@ def send_request( url ):
 def usage():
     global  config_file, routing, did
     
-    print "usage: {0:s} [options]* caller-id".format( sys.argv[0] )
-    print "\t[-c|--config]        config-file (default={0:s})".format( config_file )
-    print "\t[-d|--debug]         (debugging output)"
-    print "\t[-f|--filterid]      number (existing rule filter ID to change/delete rule)"
-    print "\t[-h|--help]          (help)"
-    print "\t[-l|--line]          DID-phone-number (default={0:s})". \
-        format( did )
-    print "\t[-n|--note]          string"
-    print "\t[-r|--routing]       noservice|busy|hangup|disconnected (default={0:s})". \
-        format( routing )
-    print "\t[-B|--busy]          (routing=sys:busy)"
-    print "\t[-D|--disconnected]  (routing=sys:disconnected)"
-    print "\t[-H|--hangup]        (routing=sys:hangup)"
-    print "\t[-N|--noservice]     (routing=sys:noservice)"
-    print "\t[-V|--version]       (print version of this program)"
-    print "\t[-X|--delete]        (delete an entry. Also needs --filterid)"
+    print( "usage: {0:s} [options]* caller-id".format( sys.argv[0] ))
+    print( "\t[-c|--config]        config-file (default={0:s})".format( config_file ))
+    print( "\t[-d|--debug]         (debugging output)")
+    print( "\t[-f|--filterid]      number (existing rule filter ID to change/delete rule)")
+    print( "\t[-h|--help]          (help)")
+    print( "\t[-l|--line]          DID-phone-number (default={0:s})". \
+        format( did ))
+    print( "\t[-n|--note]          string")
+    print( "\t[-r|--routing]       noservice|busy|hangup|disconnected (default={0:s})". \
+        format( routing ))
+    print( "\t[-B|--busy]          (routing=sys:busy)")
+    print( "\t[-D|--disconnected]  (routing=sys:disconnected)")
+    print( "\t[-H|--hangup]        (routing=sys:hangup)")
+    print( "\t[-N|--noservice]     (routing=sys:noservice)")
+    print( "\t[-V|--version]       (print version of this program)")
+    print( "\t[-X|--delete]        (delete an entry. Also needs --filterid)")
 
     return(0)
 
@@ -189,7 +211,7 @@ while i < num_args:
         elif arg == '-h' or arg == '--help':
             help_flag = True
         elif arg == '-V' or arg == '--version':
-            print "version: {0:s}".format( version )
+            print( "version: {0:s}".format( version ))
             sys.exit(0)
         else:
             m = re.match( "^\-", arg )
@@ -231,8 +253,8 @@ config.Config.set_debug( debug_flag )
 # no definitions file.  Our type info is all in our config file.
 try:
     conf = config.Config( config_file, '', AcceptUndefinedKeywords=True )
-except ( IOError, SyntaxError, ValueError ) as err:
-    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+except Exception as err:
+    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
     sys.exit(1)
 
 dprint( "Config data read OK.  double-plus woohoo." )
@@ -281,7 +303,7 @@ for keyword in keywords:
 # populate our values with defaults - which could have been updated from the config file
 for field in defaults:
     if ( field not in values ) or ( values[ field ] == None ):
-        dprint( "Using \'{0:s}\' value of \'{1:s}\' from defaults". \
+        dprint( "Using \'{0}\' value of \'{1}\' from defaults". \
             format( field, defaults[ field ] ))
         values[ field ] = defaults[ field ]
 
@@ -354,8 +376,12 @@ else:
 
 
 #  encode stuff that might have spaces or other unfriendly characters
-note     = urllib.quote( note )
-password = urllib.quote( password )
+if PY2:
+    note     = urllib.quote( note )
+    password = urllib.quote( password )
+if PY3:
+    note     = urllib.parse.quote( note )
+    password = urllib.parse.quote( password )
 
 # see if DID is given, and if so, format it correctly
 
@@ -488,10 +514,10 @@ for i in range( 0, num_lines ):
         max_note_len = note_len
 
 if num_lines:
-    print "{0:<16s} {1:<12s} {2:<16s} {3:<28s} {4:s}". \
-        format( 'CallerID', 'DID', 'Routing', 'Filter#', 'Note' )
-    print "{0:<12s} {1:<12s} {2:<20s} {3:<10s} {4:s}". \
-        format( '-' * 10, '-' * 10, '-' * 17, '-' * 7, '-' * max_note_len )
+    print( "{0:<16s} {1:<12s} {2:<16s} {3:<28s} {4:s}". \
+        format( 'CallerID', 'DID', 'Routing', 'Filter#', 'Note' ))
+    print( "{0:<12s} {1:<12s} {2:<20s} {3:<10s} {4:s}". \
+        format( '-' * 10, '-' * 10, '-' * 17, '-' * 7, '-' * max_note_len ))
 
 for i in range( 0, num_lines ):
     # set up defaults in stuff we want
@@ -508,8 +534,8 @@ for i in range( 0, num_lines ):
         entry[ field ] = json_struct[ 'filtering' ][ i ][ field ]
 
     # print entry
-    print "{0:<12s} {1:<12s} {2:<20s} {3:<10d} {4:s}". \
+    print( "{0:<12s} {1:<12s} {2:<20s} {3:<10d} {4:s}". \
         format( entry[ 'callerid' ], entry[ 'did' ], entry[ 'routing' ], \
-                int( entry[ 'filtering' ]), entry[ 'note' ] )
+                int( entry[ 'filtering' ]), entry[ 'note' ] ))
 
 sys.exit(0)

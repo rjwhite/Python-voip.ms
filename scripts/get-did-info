@@ -28,23 +28,39 @@
 
 import os
 import sys
-home = os.environ[ 'HOME' ]
-sys.path.append( home + '/lib/python' )
-import config
-
-import requests
 import json
 
+progname = sys.argv[0]
 
-version         = 'v0.1'
-home            = os.environ[ 'HOME' ]
+# need config module from Github
+config_module = "https://github.com/rjwhite/Python-config-module"
+home = os.environ[ 'HOME' ]
+sys.path.append( home + '/lib/python' )
+try:
+    import config
+except ImportError as err:
+    sys.stderr.write( "{0:s}: Please install config module\n". \
+        format( progname ))
+    sys.stderr.write( "{0:s}: can be obtained from {1:s}\n". \
+        format( progname, config_module ))
+    sys.exit(1)
+
+# may need to get requests module, via pip/pip3
+try:
+    import requests
+except ImportError as err:
+    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
+    sys.stderr.write( "{0}: You may need to do a \'pip3 install requests\'\n". \
+        format( progname ))
+    sys.exit(1)
+
+version         = 'v0.2'
 config_file     = home + '/' + '.voip-ms.conf'
 did             = ""
 debug_flag      = False
 all_info_flag   = False
 account_flag    = False
 method          = 'getDIDsInfo'
-progname        = sys.argv[0]
 
 
 # debug function if --debug|-d option given
@@ -53,7 +69,7 @@ def dprint( msg ):
     global debug_flag
 
     if debug_flag == False: return(0)
-    print msg
+    print( msg )
     return(0) ;
 
 # handle command-line options.  No, I don't wanna use optparse
@@ -74,17 +90,17 @@ while i < num_args:
         elif arg == '-a' or arg == '--all':
             all_info_flag = True
         elif arg == '-h' or arg == '--help':
-            print "usage: {0:s} [options]*".format( sys.argv[0] )
-            print "\t[-a|--all]     (all info about did(s))"
-            print "\t[-c|--config]  config-file (default={0:s})".format( config_file )
-            print "\t[-d|--debug]   (debugging output)"
-            print "\t[-h|--help]    (help)"
-            print "\t[-A|--account] (print (sub)account name(s) instead of DID)"
-            print "\t[-D|--did]     DID-number (specific phone-number (which line))"
-            print "\t[-V|--version] (print version of this program)"
+            print( "usage: {0:s} [options]*".format( sys.argv[0] ))
+            print( "\t[-a|--all]     (all info about did(s))" )
+            print( "\t[-c|--config]  config-file (default={0:s})".format( config_file ))
+            print( "\t[-d|--debug]   (debugging output)" )
+            print( "\t[-h|--help]    (help)" )
+            print( "\t[-A|--account] (print (sub)account name(s) instead of DID)" )
+            print( "\t[-D|--did]     DID-number (specific phone-number (which line))" )
+            print( "\t[-V|--version] (print version of this program)" )
             sys.exit(0)
         elif arg == '-V' or arg == '--version':
-            print "version: {0:s}".format( version )
+            print( "version: {0:s}".format( version ))
             sys.exit(0)
         else:
             sys.stderr.write( "{0:s}: unknown option: {1:s}\n".format( progname, arg ))
@@ -103,8 +119,8 @@ config.Config.set_debug( debug_flag )
 # no definitions file.  Our type info is all in our config file.
 try:
     conf = config.Config( config_file, '', AcceptUndefinedKeywords=True )
-except ( IOError, SyntaxError, ValueError ) as err:
-    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
+except Exception as err:
+    sys.stderr.write( "{0:s}: {1}\n".format( progname, err ))
     sys.exit(1)
 
 dprint( "Config data read ok.  woohoo." )
@@ -170,9 +186,9 @@ dprint( "URL = " + url )
 try:
     res = requests.get( url )
     json_data = res.text.encode( 'ascii' )
-    json_struct = json.loads( json_data )
-except ( IOError, SyntaxError, ValueError ) as err:
-    sys.stderr.write( "{0:s}: {1:s}\n".format( progname, str(err)))
+    json_struct = json.loads( json_data.decode('utf-8'))
+except Exception as err:
+    sys.stderr.write( "{0:s}: {1}\n".format( progname, str(err)))
     sys.exit(1)
 
 status = str ( json_struct[ 'status' ] )
@@ -195,6 +211,11 @@ max_key_len = len( max( did_keys, key=len ))
 
 # now get our data
 
+if 'dids' not in json_struct:
+    sys.stderr.write( "{0:s}: missing key \'did\' in return data\n". \
+        format( progname ))
+    sys.exit(1)
+
 i = 0
 for d in json_struct[ 'dids' ]:
     try:
@@ -216,7 +237,7 @@ for d in json_struct[ 'dids' ]:
     else:
         did_info = line
 
-    print did_info
+    print( did_info )
 
     # now print the rest of the data
     if all_info_flag:
@@ -228,9 +249,9 @@ for d in json_struct[ 'dids' ]:
                 v = ""
 
             format_str = "\t{0:" + str( max_key_len ) + "s}    {1:s}"
-            print format_str.format( did_field, v )
+            print( format_str.format( did_field, v ))
 
-        if num_dids > 1: print "" 
+        if num_dids > 1: print( "" )
 
     i = i + 1
 
