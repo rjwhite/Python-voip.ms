@@ -42,3 +42,19 @@
         - added 'sdist' target to Makefile
         - added REQUIREMENTS
         - added 'REQUIREMENTS' to MANIFEST.in
+
+0.5     Dec 19, 2019
+        - black-list, send-sms-message, get-did-info, get-cdrs
+          - refactored.
+          - fixed handling of config_file setting.
+        - black-list, get-did-info, get-cdrs
+          - separate main() function created, so much fewer globals
+        - send-sms-message:
+          - if callerID given, add entry using defaults if no options given
+        - get-did-info:
+          - changed -D/--did option to -l/--line to be consistent with
+            other programs
+          - created send_request() to handle lookup
+          - created usage()
+        - get-cdrs:
+          - fixed typo in usage for -t option (was -T instead of -t)

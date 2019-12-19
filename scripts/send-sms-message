@@ -34,30 +34,32 @@
 
 
 import sys
-
-progname      = sys.argv[0]
-
-try:
-    import requests
-except ImportError as err:
-    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
-    sys.stderr.write( "{0}: You may need to do a \'pip3 install requests\'\n". \
-        format( progname ))
-    sys.exit(1)
-
 import re
 import os
 import json
 import urllib
 
-home          = os.environ[ 'HOME' ]
-version       = "v0.2"      # program version - not the package version
+
+version       = "v0.3"      # program version - not the package version
+progname      = sys.argv[0]
+debug_flag    = False
+config_file = ".voip-ms.conf"
 config_module = "https://github.com/rjwhite/Python-config-module"
 did_number    = ""          # the number we send the message FROM
-debug_flag    = False
 
-PY2 = sys.version_info[0] == 2
-PY3 = sys.version_info[0] == 3
+home = os.environ[ 'HOME' ]
+if home:
+    pathname = home + '/' + ".voip-ms.conf"
+    if os.path.isfile( pathname ):
+        config_file = pathname
+
+try:
+    import requests
+except ImportError as err:
+    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
+    sys.stderr.write( "{0}: You may need to do a \'pip install requests\'\n". \
+        format( progname ))
+    sys.exit(1)
 
 # need config module from https://github.com/rjwhite/Python-config-module
 
@@ -71,12 +73,9 @@ except ImportError as err:
         format( progname, config_module ))
     sys.exit(1)
 
-# Look for a config file in the HOME directory.
-# Otherwise, it will look in the current directory
-
-confile_file  = ".voip-ms.conf"
-if home:
-    config_file = home + '/' + ".voip-ms.conf"
+# need way to quickly find out if we're Python version 2 or 3
+PY2 = sys.version_info[0] == 2
+PY3 = sys.version_info[0] == 3
 
 class BadWebCall( Exception ): pass
 
@@ -115,8 +114,8 @@ def send_request( url ):
 
     try:
         res = requests.get( url )
-        json_data = res.text.encode( 'ascii' )
-        json_struct = json.loads( json_data.decode('utf-8'))
+        json_data = res.text
+        json_struct = json.loads( json_data )
         status = str( json_struct[ 'status' ] )
     except Exception as err:
         raise BadWebCall( "{0}(): {1}".format( my_name, err ))
@@ -138,18 +137,24 @@ def send_request( url ):
 #   0
 # Exceptions:
 #   none
+# Globals:
+#   config_file, did_number
 
 def usage():
-    print( "usage: send-sms-message [option]* -r recipient message-to-send" )
-    print( "\t[-c|--config file]   (config-file. default={0:s}". \
-        format( config_file ))
-    print( "\t[-d|--debug]         (debugging output)" )
-    print( "\t[-n|--no-send]       (don't send the message, but show URL to send)" )
-    print( "\t[-h|--help]          (help)" )
-    print( "\t[-l|--line]          sender DID-phone-number (default={0:s})". \
-        format( did_number ))
-    print( "\t[-V|--version]       (print version)" )
-    print( "\t-r|--recipient phone-number" )
+    print( "usage: {} [option]* -r recipient message-to-send". \
+        format( sys.argv[0] ))
+
+    options = """\
+    [-c|--config file]   (config-file. default={})
+    [-d|--debug]         (debugging output)
+    [-n|--no-send]       (don't send the message, but show URL to send)
+    [-h|--help]          (help)
+    [-l|--line phone]    (sender DID-phone-number. default={})
+    [-V|--version]       (print version)
+    -r|--recipient phone-number\
+    """
+
+    print( options.format( config_file, did_number ))
 
     return(0)
 
