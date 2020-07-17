@@ -30,19 +30,20 @@ import re
 from datetime import date
 import datetime
 
-version      = 'v0.3'
+version      = 'v0.6'
 progname     = sys.argv[0]
 debug_flag   = False
-config_file  = ".voip-ms.conf"
+config_file  = None
 padding      = 3
 FROM_DATE    = 0
 TO_DATE      = 1
 
-home = os.environ[ 'HOME' ]
-if home:
-    pathname = home + '/' + ".voip-ms.conf"
-    if os.path.isfile( pathname ):
-        config_file = pathname
+try:
+    home = os.environ[ 'HOME' ]
+except Exception:
+    sys.stderr.write( "{0}: could not get HOME environment variable\n". \
+        format( progname ))
+    sys.exit(1)
 
 try:
     import requests
@@ -54,8 +55,10 @@ except ImportError as err:
 
 # need config module from https://github.com/rjwhite/Python-config-module
 
+if home:
+    sys.path.append( home + '/lib/python' )
+
 config_module = "https://github.com/rjwhite/Python-config-module"
-sys.path.append( home + '/lib/python' )
 try:
     import config
 except ImportError as err:
@@ -73,6 +76,70 @@ class ShouldBeEmpty_String( Exception ): pass
 class InvalidDate( Exception ): pass
 
 
+
+# Find a config file to use.
+# Passed a pathname of the last-ditch effort config file,
+# which is likely the pathname given with the -c/--config
+# option to the program.
+# We accept the *last* *existing* config file from the list:
+#   $HOME/.voip-ms.conf
+#   environment variable VOIP_MS_CONFIG_FILE
+#   the pathnane passed as an argument
+#
+# Arguments:
+#   pathname
+# Returns:
+#   config-file  (could potentially be None)
+# Exceptions:
+#   KeyError
+# Globals:
+#   home
+
+def find_config_file( str ):
+    global home
+
+    my_name = sys._getframe().f_code.co_name
+    final_config = None
+
+    # see if there is a config in the users HOME directory
+    if home:
+        pathname = home + '/' + ".voip-ms.conf"
+        if os.path.isfile( pathname ):
+            dprint( "{0}(): found config {1}".format( my_name, pathname ))
+            final_config = pathname
+        else:
+            dprint( "{0}(): no config found in HOME".format( my_name ))
+
+    # see if the user set an environment variable VOIP_MS_CONFIG_FILE
+    try:
+        pathname = os.environ[ 'VOIP_MS_CONFIG_FILE' ]
+        if os.path.isfile( pathname ):
+            dprint( "{0}(): found config via VOIP_MS_CONFIG_FILE: {1}". \
+                format( my_name, pathname ))
+            final_config = pathname
+    except KeyError:
+        dprint( "{0}(): environment variable VOIP_MS_CONFIG_FILE not set ". \
+            format( my_name ))
+
+    # see if the user gave a --config option and if the file exists
+    if str:
+        if os.path.isfile( str ):
+            dprint( "{0}(): found config given by option: {1}". \
+                format( my_name, str ))
+            final_config = str
+        else:
+            dprint( "{0}(): config file given by option does not exist: {1}". \
+                format( my_name, str ))
+
+    if final_config:
+        dprint( "{0}(): final config file to use: {1}". \
+            format( my_name, final_config ))
+    else:
+        dprint( "{0}(): could not find a config file".format( my_name ))
+
+    return( final_config )
+
+
 # Print a debug string if global debug flag set
 #
 # Arguments:
@@ -86,7 +153,7 @@ def dprint( msg ):
     global debug_flag
 
     if debug_flag == False: return(0)
-    print( msg )
+    print( 'debug: ' + msg )
     return(0) ;
 
 
@@ -399,6 +466,7 @@ def usage():
 def main():
     global config_file, padding, debug_flag
 
+    help_flag       = False
     cost_flag       = False
     quiet_flag      = False
     reverse_flag    = False
@@ -447,8 +515,7 @@ def main():
                 print( "version: {0}".format( version ))
                 return(0)
             elif arg == '-h' or arg == '--help':
-                usage()
-                return(0)
+                help_flag = True
             else:
                 sys.stderr.write( "{0}: unknown option: {1}\n".format( progname, arg ))
                 return(1)
@@ -535,8 +602,18 @@ def main():
         sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
         return(1)
 
+    # find the config file we really want
 
-    dprint( "read out config file" )
+    config_file = find_config_file( config_file ) ;
+    if not config_file:
+        sys.stderr.write( "{0}: could not find a config file\n". \
+            format( progname ))
+        return(1) ;
+    dprint( "using config file: " + config_file )
+
+    if help_flag:
+        usage()
+        return(0)
 
     # collect our data from the config file
 
