@@ -40,12 +40,13 @@ import json
 import urllib
 
 
-version       = "v0.6"      # program version - not the package version
+version       = "v0.7"      # program version - not the package version
 progname      = sys.argv[0]
 debug_flag    = False
 config_file   = None
 config_module = "https://github.com/rjwhite/Python-config-module"
 did_number    = ""          # the number we send the message FROM
+timeout       = 40
 
 home = None
 try:
@@ -172,6 +173,8 @@ def dprint( str ):
 #   JSON structure
 # Exceptions:
 #   BadWebCall
+# Globals:
+#   timeout
 
 def send_request( url ):
     my_name = sys._getframe().f_code.co_name
@@ -179,7 +182,7 @@ def send_request( url ):
     dprint( "{0:s}(): URL = {1:s}".format( my_name, url ))
 
     try:
-        res = requests.get( url )
+        res = requests.get( url, timeout=timeout )
         json_data = res.text
         json_struct = json.loads( json_data )
         status = str( json_struct[ 'status' ] )
@@ -204,7 +207,7 @@ def send_request( url ):
 # Exceptions:
 #   none
 # Globals:
-#   config_file, did_number
+#   config_file, did_number, timeout
 
 def usage():
     print( "usage: {} [option]* -r recipient message-to-send". \
@@ -216,11 +219,13 @@ def usage():
     [-n|--no-send]       (don't send the message, but show URL to send)
     [-h|--help]          (help)
     [-l|--line phone]    (sender DID-phone-number. default={})
+    [-s|--show-aliases]  (show any aliases set in config file)
+    [-t|--timeout num]   (default={})
     [-V|--version]       (print version)
     -r|--recipient phone-number\
     """
 
-    print( options.format( config_file, did_number ))
+    print( options.format( config_file, did_number, timeout ))
 
     return(0)
 
@@ -236,15 +241,16 @@ def usage():
 #   none
 
 def main():
-    global debug_flag, config_file, did_number
+    global debug_flag, config_file, did_number, timeout
 
     # defaults
 
-    line_number     = ""        # DID number to send message from
-    recipient       = ""        # phone number to send messag to
-    dont_send_flag  = False     # don't send the message, just print URL
-    want_help_flag  = False     # set if -h/--help option used
-    message = ""                # the message to send.
+    line_number       = ""        # DID number to send message from
+    recipient         = ""        # phone number to send messag to
+    dont_send_flag    = False     # don't send the message, just print URL
+    want_help_flag    = False     # set if -h/--help option used
+    show_aliases_flag = False     # show any aliases set
+    message = ""                  # the message to send.
 
     # process options
 
@@ -279,6 +285,16 @@ def main():
             elif arg == '-l' or arg == '--line':
                 i += 1
                 did_number = sys.argv[i] 
+            elif arg == '-t' or arg == '--timeout':
+                i += 1
+                timeout = sys.argv[i] 
+                if not timeout.isdigit():
+                    err = "timeout ({0:s}) is not non-numeric".format( timeout )
+                    sys.stderr.write( "{0:s}: {1}\n".format( progname, err ))
+                    return(1)
+                timeout = int( timeout )
+            elif arg == '-s' or arg == '--show-aliases':
+                show_aliases_flag = True
             elif arg == '-h' or arg == '--help':
                 want_help_flag = True
             else:
@@ -373,6 +389,38 @@ def main():
         usage()
         return(0)
 
+    # see if there are aliases
+
+    aliases = {}
+    try:
+        aliases = conf.get_values( 'sms', 'aliases' )
+    except ValueError as err:
+        pass
+
+    # see if user wants to see any aliases set up in config file
+    if show_aliases_flag:
+        alias_keys = aliases.keys()
+            
+        max_len = 0
+        # first get maximum length of aliases
+        for key in alias_keys:
+            alias = aliases[ key ]
+            l = len( alias )
+            if l > max_len:
+                max_len = l
+
+        max_len += 4        # add some spacing
+
+        # now print them.  First sort the keys (aliases)
+        sorted_aliases = list( aliases )
+        sorted_aliases.sort()
+        for key in sorted_aliases:
+            alias = aliases[ key ]
+            print( '{1:<{0}} {2}'.format( max_len, key, alias ))
+
+        return(0)
+
+
     # sanity checking
 
     if recipient == "":
@@ -393,13 +441,6 @@ def main():
     dprint( "recipient is \'{0:s}\'".format( recipient ))
     dprint( "DID number is \'{0:s}\'".format( did_number ))
 
-    # see if there are aliases
-
-    aliases = {}
-    try:
-        aliases = conf.get_values( 'sms', 'aliases' )
-    except ValueError as err:
-        pass
 
     if did_number in aliases:
         dprint( "found DID \'{0:s}\' in aliases!".format( did_number ))
