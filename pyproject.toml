@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "voip_ms_moxad"
+version = "0.8"
+authors = [
+  { name="RJ White", email="rj.white@moxad.com" },
+]
+
+description = "scripts using voip.ms API"
+readme = "README.md"
+
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Intended Audience :: End Users/Desktop",
+    "Natural Language :: English"
+]
+
+dependencies = [
+    "config_moxad>=4.0",
+    "requests>=2.20",
+    "urllib3>=1.23",
+]
+
+[project.urls]
+Homepage = "https://github.com/rjwhite/Python-voip.ms"
+
+[project.scripts]
+black-list       = "voip_ms_moxad.blacklist:main"
+get-did-info     = "voip_ms_moxad.get_did_info:main"
+send-sms-message = "voip_ms_moxad.send_sms_message:main"
+get-cdrs         = "voip_ms_moxad.get_cdrs:main"

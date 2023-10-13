@@ -25,7 +25,7 @@
         - doc/man/man1/send-sms-message.1
           - created
         - RELEASE_NOTES:
-          - formating changes
+          - formatting changes
         - setup.py:
           - updated 'version'
           - added scripts/send-sms-message to 'scripts'
@@ -74,7 +74,7 @@
             the commands are only useable when you have mounted that
             decrypted vault, say on a laptop, but if your laptop gets
             stolen, that voip.ms authentication info is safely encrypted.
-            You can best iumplement that by using the environment
+            You can best implement that by using the environment
             variable VOIP_MS_CONFIG_FILE instead of having to supply
             the option -c/--config each time
         - doc/man/man1/black-list.1, doc/man/man1/get-cdrs.1,
@@ -84,3 +84,43 @@
 0.7     Mar 13, 2022
         - added options -t/--timeout and -s/--show-aliases to send-sms-message
         - updated doc/man/man1/send-sms-message.1  to show new options
+
+0.8     Oct 12, 2023
+        COMPLETE OVERHAUL and change of installation target directory
+
+        The entire package has been reorganized to utilize modern best
+        practices for Python packaging and distribution.  Programs have now
+        been changed to be modules using the main() function as an entry
+        point for wrapper programs that import and call them.  They are
+        no longer using setup() and disttools, but instead has pip as the
+        front-end for a build, and uses a back-end of hatching, as defined in
+        the pyproject.toml file.
+
+        Each program (module), under src/voip_ms_moxad, now has a --timeout
+        option which can over-ride any timeout value found in the config file.
+        There is much better handling of values, going from defaults, then
+        the config-file, and then finally command-line options.
+
+        A lot of refactoring and eliminating long lines in the code for 
+        better readability.
+
+        If Python virtual environments are not being used, then the default
+        destination directory will be the standard Python location of:
+            ${HOME}/.local/bin
+        which should be added to your PATH.
+
+        All the functions from the programs (modules) have now been moved
+        to functions.py - except for usage() and main() in each program.
+        This eliminates a lot of code duplication - mostly from the common
+        functions to each program of dprint(), find_config_file() and 
+        send_request()
+
+        There is now a globals.py (containing progname and debug_flag)
+        and a constants.py - used by anything using format_date()
+
+        The programs (modules) no longer attempt to be Python2 compatible.
+        If you're running Python2, run an earlier version of this code.
+        I think it's time to let go of Python2 for relatively modern code.
+
+        To see why the dependancies in pyproject.toml are pruned and version
+        vague compared to requirements.txt, see file info/failing-on-TestPyPI

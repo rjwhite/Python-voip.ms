@@ -21,7 +21,9 @@ black-list \- manage the black listed phone numbers for voip.ms phone lines
 [
 .B \-r routing-type
 ]
-
+[
+.B \-t timeout
+]
 .SH OPTIONS
 .TP
 \fB\-c|--config\fR config-file
@@ -44,6 +46,9 @@ use the string given as a description for who/what is being black-listed.
 .TP
 \fB\-r|--routing\fR routing-type
 type of routing response.
+.TP
+\fB\-t|--timeout\fR seconds
+Timeout for API web request
 .TP
 \fB\-B|--busy\fR
 Busy routing response.   short for --rounting sys:busy
@@ -141,6 +146,6 @@ send-sms-message(1)
 .SH AUTHOR
 RJ White
 .br
-rj@moxad.com
+rj.white@moxad.com
 .br
 Moxad Enterprises Inc.

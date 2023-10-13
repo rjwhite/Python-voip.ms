@@ -21,6 +21,9 @@ get-cdrs \- get CDR records for phone lines using voip.ms API
 [
 .B \-t YYYY-MM-DD
 ]
+[
+.B \-w timeout
+]
 .SH OPTIONS
 .TP
 \fB\-a|--account\fR account-name
@@ -53,6 +56,9 @@ who is Sheldon...?
 \fB\-t|--to \fR YYYY-MM-DD
 use the given date as the TO date
 .TP
+\fB\-w|--timeout \fR seconds
+timeout for web API request
+.TP
 \fB\-C|--cost\fR
 total up costs and duration of CDRs
 .TP
@@ -70,47 +76,55 @@ get-cdrs --from 2017-11-15 --to 2017-11-22 --reverse
 prints the CDR records from Nov 15, 2017 to Nov 22, 1017 from oldest to latest.
 .TP
 get-cdrs --last-month --cost --account 123456
-prints the CDRs records for all of last month, but only for the account number '123456'
+prints the CDRs records for all of last month, but only for the account
+number '123456'
 .SH DESCRIPTION
 .I get-cdrs
-prints the CDR's (Call Display Records) of phone-calls using the API for voip.ms.
-Unless a specific phone line is specified using the --account option, then all records
-for all accounts and sub-accounts are printed.
+prints the CDR's (Call Display Records) of phone-calls using the API for
+voip.ms.  Unless a specific phone line is specified using the --account
+option, then all records for all accounts and sub-accounts are printed.
 .PP
-A config file called .voip-ms.conf, found in the users HOME directory by default, is used
-to specify authentication information to gather the records using the voip.ms API.
-The config file specifies which information fields are wanted, and what order they are
-printed in the output and what the titles should be.
+A config file called .voip-ms.conf, found in the users HOME directory
+by default, is used to specify authentication information to gather
+the records using the voip.ms API.  The config file specifies which
+information fields are wanted, and what order they are printed in the
+output and what the titles should be.
 .PP
-Although the section 'title' must exist in the config file, if any of the individual titles
-for a field are missing, then the field-name will be used instead, with the first letter
-capitalized.  For example, if no title for the field 'callerid' is specified, then the
-title printed will be 'Callerid'.
+Although the section 'title' must exist in the config file, if any of
+the individual titles for a field are missing, then the field-name will
+be used instead, with the first letter capitalized.  For example, if no
+title for the field 'callerid' is specified, then the title printed will
+be 'Callerid'.
 .PP
-The config file section called 'field-size' is optional.  It can specify the size of fields
-to be used, which includes a padding (which defaults to 3 spaces).  However, if it is not
-given, the program will determine the maximum length of data for that field, add the padding
-length (which can be changed with the --padding option) and uses that to determine space to
-use.  This is the most space efficient and pretty way to use the program, not specifying the
-field-sizes.  However, it means the sizes of fields can change between runs, depending of the
-maximum length of the data at the time.  If it is desired or necessary to have consistent
-fields-sizes for, say, monthly reports, then use the 'field-sizes' section of the config file.
-Note that a specified field-size will be ignored if it is not enough to accommodate the size of
-the title for the field.  If the data is too large for whatever field size may be specified,
-it will be truncated and ended with 3 dots to indicate that there was more data.
+The config file section called 'field-size' is optional.  It can specify
+the size of fields to be used, which includes a padding (which defaults to
+3 spaces).  However, if it is not given, the program will determine the
+maximum length of data for that field, add the padding length (which can
+be changed with the --padding option) and uses that to determine space
+to use.  This is the most space efficient and pretty way to use the
+program, not specifying the field-sizes.  However, it means the sizes
+of fields can change between runs, depending of the maximum length of
+the data at the time.  If it is desired or necessary to have consistent
+fields-sizes for, say, monthly reports, then use the 'field-sizes' section
+of the config file.  Note that a specified field-size will be ignored
+if it is not enough to accommodate the size of the title for the field.
+If the data is too large for whatever field size may be specified, it will
+be truncated and ended with 3 dots to indicate that there was more data.
 .PP
-Be sure to set the timezone correctly in the 'time' section in the config file.  It is best to
-verify it is correct by using this program output and comparing it to the time stamp you
-see on your calls on the web-site, or better yet, against a call you just made where you know
+Be sure to set the timezone correctly in the 'time' section in the
+config file.  It is best to verify it is correct by using this program
+output and comparing it to the time stamp you see on your calls on the
+web-site, or better yet, against a call you just made where you know
 the correct time it was made.
 .PP
-To use this program, you will have to set up access for the IP number you are running this program
-from.  Please see the URL \fBhttps://voip.ms/m/api.php\fP  for setting up access.
+To use this program, you will have to set up access for the IP
+number you are running this program from.  Please see the
+URL \fBhttps://voip.ms/m/api.php\fP  for setting up access.
 .SH CONFIG FILE
 The config file \fB.voip-ms.conf\fP, found in the user HOME directory,
 is used for several programs that use the voip.ms API.
-The config file is shared, mainly so there is a single centralized location for authentication data for access 
-to the API.
+The config file is shared, mainly so there is a single centralized
+location for authentication data for access to the API.
 .PP
 The required sections in the config file for the \fIget-cdrs\fP program are:
 .PP
@@ -131,8 +145,8 @@ The required sections in the config file for the \fIget-cdrs\fP program are:
                           busy      = 1, \\
                           failed    = 1
 
-    order (array)       = date, callerid, destination, description, \\
-                          duration, disposition
+    order (array)       = date, callerid, destination, \\
+                          description, duration, disposition
 
     title (hash)       = \\
                           date        = 'Date and Time', \\
@@ -155,23 +169,26 @@ The required sections in the config file for the \fIget-cdrs\fP program are:
 .fi
 .RE
 .PP
-The 'field-size' is optional, and as can be seen in the above example, that section is
-commented out.
+The 'field-size' is optional, and as can be seen in the above example,
+that section is commented out.
 .PP
-The 'title' section must exist, but if the individual fields are not given or do not match
-real field names, then the field-name will be used as the title, with the first letter capitalized.
+The 'title' section must exist, but if the individual fields are not
+given or do not match real field names, then the field-name will be used
+as the title, with the first letter capitalized.
 .PP
-The 'order' specifies the order of output of the fields, as well as which fields are wanted.  The available 
-fields are date, callerid, destination, description, duration, rate, total, and disposition.
+The 'order' specifies the order of output of the fields, as well as which
+fields are wanted.  The available fields are date, callerid, destination,
+description, duration, rate, total, and disposition.
 .PP
-The 'cdrs-wanted' specify which classifiction of CDR records are wanted.  If the value of 1 is given,
-then they are wanted.  There are 4 different classes of CDRs:  answered, noanswer, busy and failed.
+The 'cdrs-wanted' specify which classifiction of CDR records are wanted.
+If the value of 1 is given, then they are wanted.  There are 4 different
+classes of CDRs:  answered, noanswer, busy and failed.
 .SH ENVIRONMENT VARIABLES
 VOIP_MS_CONFIG_FILE
 .br
-If the environment variable VOIP_MS_CONFIG_FILE is set, and if the file exists, it will
-be used instead of the default ${HOME}/.voip-ms.conf - unless it is over-ridden by the
-config file options -c or --config
+If the environment variable VOIP_MS_CONFIG_FILE is set, and if the file
+exists, it will be used instead of the default ${HOME}/.voip-ms.conf -
+unless it is over-ridden by the config file options -c or --config
 .SH SEE ALSO
 black-list(1)
 .br
@@ -181,6 +198,6 @@ send-sms-message(1)
 .SH AUTHOR
 RJ White
 .br
-rj@moxad.com
+rj.white@moxad.com
 .br
 Moxad Enterprises Inc.

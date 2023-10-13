@@ -1,0 +1,45 @@
+Config File:
+    Install a .voip-ms.conf config file into your $HOME directory after
+    making appropriate changes.  At a minimum, the user, pass and did fields.
+    You can get an example under configs/.voip-ms.conf
+
+API access to voip.ms:
+    To set up API access to your service, please see:
+        https://voip.ms/m/api.php
+    You need to specify the IP number(s) to accept requests from.
+
+config-moxad module:
+    Quick explanation: you don't need to do anything if you installed
+    this package normally.
+
+    Otherwise, you need the Config module in package config_moxad.
+    If you do a 'make install', it will fetch it automatically from
+    the Python package Index (PyPI) along with all the other
+    dependencies that are listed in the pyproject.toml file.
+    It effectively is doing a:
+
+        python3 -m pip install -r requirements.txt
+
+    Or you can manually fetch the config module and install it with:
+
+        pip install config-moxad
+
+    Or you can fetch it from:
+
+        http://github.com/rjwhite/Python-config-module
+
+    and install it separately using the Makefile in that package with:
+
+        make install
+
+monthly collection of CDR records:
+    The program src/write-phone-CDR-records.sh can be used from the
+    crontab at the beginning of each month to get and save CDR reports
+    for each DID you have each month.  An example of getting CDRs for
+    the previous month for two phone lines, at 3:15am on the first of
+    the month:
+
+    15 3 1 * * /home/rj/bin/write-phone-CDR-records 12345 12345_alarm 
+
+    It writes the files into:
+        ${HOME}/data/phone-records/<year>/<month>-<account-name>

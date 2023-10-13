@@ -1,199 +1,61 @@
-#!/usr/bin/env python
+"""
+get info about your voip.ms phone lines
 
-# get DID info from voip.ms API
+Get information about each of your voip.ms phone lines
 
-#   get-did-info.py --help     - print options
-#   get-did-info.py            - print list of DID numbers
-#   get-did-info.py --account  - print list (sub)account:DID-number
-#   get-did-info.py --all      - print all data available about the DID(s)
+Examples:
+  get-did-info.py --help     - print options
+  get-did-info.py            - print list of DID numbers
+  get-did-info.py --account  - print list (sub)account:DID-number
+  get-did-info.py --all      - print all data available about the DID(s)
+"""
 
 # Copyright 2018 RJ White
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-#
+
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-#
+
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-# ---------------------------------------------------------------------
-
-# need 3rd party Config from github.com/rjwhite/Python-config-module
-# add the default path if they installed it as a normal user via
-#    python setup.py install --user=~
 
 import os
 import sys
-import json
-
-version       = 'v0.6'
-progname      = sys.argv[0]
-config_file   = None
-debug_flag    = False
-
-home = None
 try:
-    home = os.environ[ 'HOME' ]
-except Exception:
-    sys.stderr.write( "{0}: could not get HOME environment variable\n". \
-        format( progname ))
+    import json
+
+    from config_moxad import config
+
+    from .functions import find_config_file, dprint, send_request, BadWebCall
+    from . import globals
+    from . import __version__
+except ModuleNotFoundError as err:
+    sys.stderr.write( "Error: missing module: %s\n" % err )
     sys.exit(1)
-
-if home:
-    sys.path.append( home + '/lib/python' )
-
-config_module = "https://github.com/rjwhite/Python-config-module"
-try:
-    import config
-except ImportError as err:
-    sys.stderr.write( "{0}: Please install config module\n". \
-        format( progname ))
-    sys.stderr.write( "{0}: can be obtained from {1}\n". \
-        format( progname, config_module ))
-    sys.exit(1)
-
-# may need to get requests module, via pip
-try:
-    import requests
-except ImportError as err:
-    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
-    sys.stderr.write( "{0}: You may need to do a \'pip install requests\'\n". \
-        format( progname ))
-    sys.exit(1)
-
-class BadWebCall( Exception ): pass
-
-
-# Find a config file to use.
-# Passed a pathname of the last-ditch effort config file,
-# which is likely the pathname given with the -c/--config
-# option to the program.
-# We accept the *last* *existing* config file from the list:
-#   $HOME/.voip-ms.conf
-#   environment variable VOIP_MS_CONFIG_FILE
-#   the pathnane passed as an argument
-#
-# Arguments:
-#   pathname
-# Returns:
-#   config-file  (could potentially be None)
-# Exceptions:
-#   KeyError
-# Globals:
-#   home
-
-def find_config_file( str ):
-    global home
-
-    my_name = sys._getframe().f_code.co_name
-    final_config = None
-
-    # see if there is a config in the users HOME directory
-    if home:
-        pathname = home + '/' + ".voip-ms.conf"
-        if os.path.isfile( pathname ):
-            dprint( "{0}(): found config {1}".format( my_name, pathname ))
-            final_config = pathname
-        else:
-            dprint( "{0}(): no config found in HOME".format( my_name ))
-
-    # see if the user set an environment variable VOIP_MS_CONFIG_FILE
-    try:
-        pathname = os.environ[ 'VOIP_MS_CONFIG_FILE' ]
-        if os.path.isfile( pathname ):
-            dprint( "{0}(): found config via VOIP_MS_CONFIG_FILE: {1}". \
-                format( my_name, pathname ))
-            final_config = pathname
-    except KeyError:
-        dprint( "{0}(): environment variable VOIP_MS_CONFIG_FILE not set ". \
-            format( my_name ))
-
-    # see if the user gave a --config option and if the file exists
-    if str:
-        if os.path.isfile( str ):
-            dprint( "{0}(): found config given by option: {1}". \
-                format( my_name, str ))
-            final_config = str
-        else:
-            dprint( "{0}(): config file given by option does not exist: {1}". \
-                format( my_name, str ))
-
-    if final_config:
-        dprint( "{0}(): final config file to use: {1}". \
-            format( my_name, final_config ))
-    else:
-        dprint( "{0}(): could not find a config file".format( my_name ))
-
-    return( final_config )
-
-
-# debug function if --debug|-d option given
-#
-# Arguments:
-#   string to print
-# Returns:
-#   0
-# Exceptions:
-#   none
-# Globals:
-#   debug_flag
-
-def dprint( msg ):
-    global debug_flag
-
-    if debug_flag == False: return(0)
-    print( 'debug: ' + msg )
-    return(0) ;
-
-
-# send a URL to the Voip.ms API
-#
-# Arguments:
-#   1:  URL
-# Returns:
-#   JSON structure
-# Exceptions:
-#   BadWebCall
-
-def send_request( url ):
-    my_name = sys._getframe().f_code.co_name
-
-    dprint( "{0}(): URL = {1}".format( my_name, url ))
-
-    try:
-        res = requests.get( url )
-        json_data = res.text
-        json_struct = json.loads( json_data )
-        status = str( json_struct[ 'status' ] )
-    except Exception as err:
-        raise BadWebCall( "{0}(): {1}".format( my_name, err ))
-
-    if status != 'success':
-        raise BadWebCall( "{0}(): Failed status: {1}". \
-            format( my_name, status ))
-
-    dprint( "{0}(): status = {1}".format( my_name, status ))
-
-    return( json_struct )
 
 
 # print usage
 #
 # Arguments:
-#   none
+#   a dictionary containing values for:
+#       'config-file'
+#       'timeout'
 # Returns:
 #   0
 # Exceptions:
 #   none
-# Global variables:
-#   config_file
 
-def usage():
-    print( "usage: {} [options]*".format( sys.argv[0] ))
+def usage( values ):
+    print( "usage: {} [options]*".format( globals.progname ))
+
+
+    config_file = values.get( 'config-file', '?' )
+    timeout     = values.get( 'timeout', '?' )
 
     options = """\
     [-a|--all]             (all info about DID(s))
@@ -201,54 +63,79 @@ def usage():
     [-d|--debug]           (debugging output)
     [-h|--help]            (help)
     [-l|--line phone-num]  (DID-number)
+    [-t|--timeout num]     (default={})
     [-A|--account]         (print (sub)account name(s) instead of DID)
     [-V|--version]         (print version of this program)\
     """
 
-    print( options.format( config_file ))
+    print( options.format( config_file, timeout ))
     return(0)
 
 
 # main program
 #
 # Arguments:
-#   none
+#   command-line arguments
 # Returns:
 #   0:  ok
 #   1:  not ok
 # Exceptions:
 #   none
-# Global variables:
-#   config_file, debug_flag
 
-def main():
-    global config_file, debug_flag
+def main( argv=sys.argv ):
+    progname = argv[0]
+    if progname == None or progname == "":
+        progname = 'get-did-info'
+
+    globals.progname = progname     # make available to other functions
+    globals.debug_flag = False      # used by functions.debug
+
+    # set some defaults
 
     all_info_flag = False
     account_flag  = False
     help_flag     = False
     method        = 'getDIDsInfo'
-    did           = None
+    config_file   = None
 
-    num_args = len( sys.argv )
+    # These may be over-written by config-file values
+
+    defaults = {
+        'did':      None,
+        'timeout':  42,
+    }
+
+    # values from the command-line will go into values.
+    # Then if any keys are found in defaults, but not in values,
+    # then the default values will be copied into values as well
+    # bringing in any changes from the config file
+
+    values = {}
+
+    # handle command-line options
+
+    num_args = len( argv )
     i = 1
     while i < num_args:
         try:
-            arg = sys.argv[i]
+            arg = argv[i]
             if arg == '-c' or arg == '--config':
-                i = i + 1 ;     config_file = sys.argv[i]
+                i = i + 1 ;     config_file = argv[i]
             elif arg == '-l' or arg == '--line':
-                i = i + 1 ;     did = sys.argv[i]
+                i = i + 1 ;     values[ 'did' ] = argv[i]
             elif arg == '-A' or arg == '--account':
                 account_flag = True
+            elif arg == '-t' or arg == '--timeout':
+                i += 1 ;        values[ 'timeout' ] = argv[i]
             elif arg == '-d' or arg == '--debug':
-                debug_flag = True
+                globals.debug_flag = True
             elif arg == '-a' or arg == '--all':
                 all_info_flag = True
             elif arg == '-h' or arg == '--help':
                 help_flag = True
             elif arg == '-V' or arg == '--version':
-                print( "version: {0}".format( version ))
+                print( "package version: {0}".format( __version__ ))
+                print( "config  version: {0}".format( config.__version__ ))
                 return(0)
             else:
                 sys.stderr.write( "{0}: unknown option: {1}\n". \
@@ -262,7 +149,6 @@ def main():
 
         i = i+1
 
-
     # find the config file we really want
 
     config_file = find_config_file( config_file ) ;
@@ -272,12 +158,7 @@ def main():
         return(1) ;
     dprint( "using config file: " + config_file )
 
-    if help_flag:
-        usage()
-        return(0)
-
-
-    config.Config.set_debug( debug_flag )
+    config.Config.set_debug( globals.debug_flag )
 
     # no definitions file.  Our type info is all in our config file.
     try:
@@ -287,7 +168,6 @@ def main():
         return(1)
 
     dprint( "Config data read ok.  woohoo." )
-
 
     # make sure we have our mandatory sections
     num_errors = 0
@@ -322,8 +202,44 @@ def main():
     dprint( "user\t= {0}".format( userid ))
     dprint( "pass\t= {0}".format( password ))
 
+    # values from the config file over-ride any defaults
+    keywords = conf.get_keywords( 'info' )
+    for keyword in keywords:
+        type_ = conf.get_type( 'info', keyword )
+        if type_ == 'scalar':
+            val = conf.get_values( 'info', keyword )
+            defaults[ keyword ] = val
+            msg = "Replacing/setting default for \'{0}\' ".format( keyword )
+            msg = msg + "value of \'{0}\' from config file".format( val )
+            dprint( msg )
+
+    # populate our values with defaults - which could have been updated from
+    # the config file
+    for field in defaults:
+        if ( field not in values ) or ( values[ field ] == None ):
+            dprint( "Using \'{0}\' value of \'{1}\' from defaults". \
+                format( field, defaults[ field ] ))
+            values[ field ] = defaults[ field ]
+
+    # we now have our values settled from defaults, config-file, and cmd-line
+
+    timeout = values[ 'timeout' ]
+
+    if isinstance( timeout, str ):
+        # must have got it from the cmd-line or the config file
+        if not timeout.isdigit():
+            err = "timeout ({0:s}) is not numeric".format( timeout )
+            sys.stderr.write( "{0:s}: {1}\n".format( progname, err ))
+            return(1)
+        timeout = int( timeout )
+
+    if help_flag:
+        usage( { 'config-file': config_file, 'timeout': timeout } )
+        return(0)
+
     # see if DID is given, and if so, format it correctly
 
+    did = values[ 'did' ]
     if did:
         dprint( "DID number was given as a command-line option: {0}". \
             format( did ))
@@ -351,7 +267,7 @@ def main():
     dprint( "URL = " + url )
 
     try:
-        json_struct = send_request( url )
+        json_struct = send_request( url, timeout )
     except BadWebCall as err:
         sys.stderr.write( "{0}: {1}\n".format( progname, str(err)))
         return(1)
@@ -400,7 +316,7 @@ def main():
 
         # now print the rest of the data
         if all_info_flag:
-            for did_field in did_keys:
+            for did_field in sorted( did_keys):
                 try:
                     v = str( json_struct[ 'dids' ][ i ][ did_field ] )
                 except ( KeyError ) as err:
@@ -417,11 +333,3 @@ def main():
         i = i + 1
 
     return(0)
-
-
-# let er rip...
-
-if main():
-    sys.exit(1)
-else:
-    sys.exit(0)

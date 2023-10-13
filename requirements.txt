@@ -1,0 +1,10 @@
+build==1.0.3
+certifi==2023.7.22
+charset-normalizer==3.3.0
+config_moxad==4.0.1
+idna==3.4
+packaging==23.2
+pyproject_hooks==1.0.0
+requests==2.31.0
+tomli==2.0.1
+urllib3==2.0.6

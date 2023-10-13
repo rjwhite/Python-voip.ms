@@ -1,217 +1,75 @@
-#!/usr/bin/env python
+"""
+send a SMS message
 
-# send a SMS message
-# Uses a config file for authentication and defaults
+Send a SMS message from one of your voip.ms phone lines
 
-# Any arguments that are not options, are concatonated together
-# with a single space separator to make up the message.  For eg:
-#   send-sms-message test -r alfred gabba gabba -l main-DID hey
-# will send "test gabba gabba hey" to 'alfred' from line 'main-DID'
-# 'alfred' and 'main-DID' are aliases set in the config file.
+Examples:
+    send-sms-message --help
+    send-sms-message --recipient 555-123-4567 pick up some butter-tarts
+    send-sms-message -r my-wife "I sold the kids"
 
-# This needs the config module found on github.com under user rjwhite
-#   https://github.com/rjwhite/Python-config-module
+send-sms-message uses a config file for authentication and defaults
+and which of you rvoip.ms phone lines to use as the default.
 
-# Examples:
-# send-sms-message --help
-# send-sms-message --recipient 555-123-4567 pick up some butter-tarts
-# send-sms-message -r my-wife "I sold the kids"
+Any arguments that are not options, are concatonated together
+with a single space separator to make up the message.  For eg:
+
+  send-sms-message test -r alfred gabba gabba -l main-DID hey
+
+will send "test gabba gabba hey" to 'alfred' from line 'main-DID'.
+
+'alfred' and 'main-DID' are aliases set in the config file.
+"""
 
 # Copyright 2019 RJ White
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-#
+
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-#
+
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-# ---------------------------------------------------------------------
-
 
 import sys
 import re
 import os
-import json
-import urllib
-
-
-version       = "v0.7"      # program version - not the package version
-progname      = sys.argv[0]
-debug_flag    = False
-config_file   = None
-config_module = "https://github.com/rjwhite/Python-config-module"
-did_number    = ""          # the number we send the message FROM
-timeout       = 40
-
-home = None
-try:
-    home = os.environ[ 'HOME' ]
-except Exception:
-    sys.stderr.write( "{0}: could not get HOME environment variable\n". \
-        format( progname ))
-    sys.exit(1)
 
 try:
-    import requests
-except ImportError as err:
-    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
-    sys.stderr.write( "{0}: You may need to do a \'pip install requests\'\n". \
-        format( progname ))
+    import json
+    import urllib
+
+    from config_moxad import config
+
+    from .functions import find_config_file, dprint, send_request, BadWebCall
+    from . import globals
+    from . import __version__
+except ModuleNotFoundError as err:
+    sys.stderr.write( "Error: missing module: %s\n" % err )
     sys.exit(1)
-
-# need config module from https://github.com/rjwhite/Python-config-module
-
-if home:
-    sys.path.append( home + '/lib/python' )
-
-try:
-    import config
-except ImportError as err:
-    sys.stderr.write( "{0:s}: Please install config module\n". \
-        format( progname ))
-    sys.stderr.write( "{0:s}: can be obtained from {1:s}\n". \
-        format( progname, config_module ))
-    sys.exit(1)
-
-# need way to quickly find out if we're Python version 2 or 3
-PY2 = sys.version_info[0] == 2
-PY3 = sys.version_info[0] == 3
-
-class BadWebCall( Exception ): pass
-
-
-# Find a config file to use.
-# Passed a pathname of the last-ditch effort config file,
-# which is likely the pathname given with the -c/--config
-# option to the program.
-# We accept the *last* *existing* config file from the list:
-#   $HOME/.voip-ms.conf
-#   environment variable VOIP_MS_CONFIG_FILE
-#   the pathnane passed as an argument
-#
-# Arguments:
-#   pathname
-# Returns:
-#   config-file  (could potentially be None)
-# Exceptions:
-#   KeyError
-# Globals:
-#   home
-
-def find_config_file( str ):
-    global home
-
-    my_name = sys._getframe().f_code.co_name
-    final_config = None
-
-    # see if there is a config in the users HOME directory
-    if home:
-        pathname = home + '/' + ".voip-ms.conf"
-        if os.path.isfile( pathname ):
-            dprint( "{0}(): found config {1}".format( my_name, pathname ))
-            final_config = pathname
-        else:
-            dprint( "{0}(): no config found in HOME".format( my_name ))
-
-    # see if the user set an environment variable VOIP_MS_CONFIG_FILE
-    try:
-        pathname = os.environ[ 'VOIP_MS_CONFIG_FILE' ]
-        if os.path.isfile( pathname ):
-            dprint( "{0}(): found config via VOIP_MS_CONFIG_FILE: {1}". \
-                format( my_name, pathname ))
-            final_config = pathname
-    except KeyError:
-        dprint( "{0}(): environment variable VOIP_MS_CONFIG_FILE not set ". \
-            format( my_name ))
-
-    # see if the user gave a --config option and if the file exists
-    if str:
-        if os.path.isfile( str ):
-            dprint( "{0}(): found config given by option: {1}". \
-                format( my_name, str ))
-            final_config = str
-        else:
-            dprint( "{0}(): config file given by option does not exist: {1}". \
-                format( my_name, str ))
-
-    if final_config:
-        dprint( "{0}(): final config file to use: {1}". \
-            format( my_name, final_config ))
-    else:
-        dprint( "{0}(): could not find a config file".format( my_name ))
-
-    return( final_config )
-
-
-# debug function if --debug|-d option given
-#
-# Arguments:
-#   string to print
-# Returns:
-#   0
-# Exceptions:
-#   none
-
-def dprint( str ):
-    if debug_flag == False:
-        return 0
-
-    print( "debug: {0:s}".format( str ))
-    return 0
-
-
-# send a URL to the Voip.ms API
-#
-# Arguments:
-#   1:  URL
-# Returns:
-#   JSON structure
-# Exceptions:
-#   BadWebCall
-# Globals:
-#   timeout
-
-def send_request( url ):
-    my_name = sys._getframe().f_code.co_name
-
-    dprint( "{0:s}(): URL = {1:s}".format( my_name, url ))
-
-    try:
-        res = requests.get( url, timeout=timeout )
-        json_data = res.text
-        json_struct = json.loads( json_data )
-        status = str( json_struct[ 'status' ] )
-    except Exception as err:
-        raise BadWebCall( "{0}(): {1}".format( my_name, err ))
-
-    if status != 'success':
-        raise BadWebCall( "{0:s}(): Failed status: {1:s}". \
-            format( my_name, status ))
-
-    dprint( "{0:s}(): status = {1:s}".format( my_name, status ))
-
-    return( json_struct )
 
 
 # print usage
 #
 # Arguments:
-#   none
+#   a dictionary containing values for:
+#       'config-file'
+#       'did-number'
+#       'timeout'
 # Returns:
 #   0
-# Exceptions:
-#   none
-# Globals:
-#   config_file, did_number, timeout
 
-def usage():
+def usage( values ):
     print( "usage: {} [option]* -r recipient message-to-send". \
-        format( sys.argv[0] ))
+        format( globals.progname ))
+
+    config_file = values.get( 'config-file', '?' )
+    did_number  = values.get( 'did-number', '?' )
+    timeout     = values.get( 'timeout', '?' )
 
     options = """\
     [-c|--config file]   (config-file. default={})
@@ -233,32 +91,48 @@ def usage():
 # main program
 #
 # Arguments:
-#   none
+#   aray of command-line arguments
 # Returns:
 #   0:  ok
 #   1:  not ok
-# Exceptions:
-#   none
 
-def main():
-    global debug_flag, config_file, did_number, timeout
+def main( argv=sys.argv ):
+    config_file = None
 
-    # defaults
+    progname = argv[0]
+    if progname == None or progname == "":
+        progname = 'blacklist'
 
-    line_number       = ""        # DID number to send message from
-    recipient         = ""        # phone number to send messag to
+    globals.progname = progname     # make available to other functions
+    globals.debug_flag = False      # used by functions.debug
+
+    # set some defaults
+    # These may be over-written by config file values
+
+    defaults = {
+        'timeout':  42,
+        'did':      None,
+    }
+
+    # values from the command-line will go into values.
+    # Then if any keys are found in values, but not in defaults,
+    # then the default values will be copied into values as well
+
+    values = {}
+
     dont_send_flag    = False     # don't send the message, just print URL
     want_help_flag    = False     # set if -h/--help option used
     show_aliases_flag = False     # show any aliases set
-    message = ""                  # the message to send.
+    recipient         = ""        # phone number to send message to
+    message           = ""        # the message to send.
 
     # process options
 
-    num_args = len( sys.argv )
+    num_args = len( argv )
     i = 1
     while i < num_args:
         try:
-            arg = sys.argv[i]
+            arg = argv[i]
 
             m = re.match( '^-', arg )
             if not m:
@@ -270,29 +144,21 @@ def main():
                 continue
 
             if arg == '-d' or arg == '--debug':
-                debug_flag = True
+                globals.debug_flag = True
             elif arg == '-n' or arg == '--no-send':
                 dont_send_flag = True
             elif arg == '-V' or arg == '--version':
-                print( "version: {0:s}".format( version ))
+                print( "package version: {0}".format( __version__ ))
+                print( "config  version: {0}".format( config.__version__ ))
                 return(0)
             elif arg == '-c' or arg == '--config':
-                i += 1
-                config_file = sys.argv[i] 
+                i += 1 ;    config_file = argv[i] 
             elif arg == '-r' or arg == '--recipient':
-                i += 1
-                recipient = sys.argv[i] 
+                i += 1 ;    recipient = argv[i] 
             elif arg == '-l' or arg == '--line':
-                i += 1
-                did_number = sys.argv[i] 
+                i += 1 ;    values[ 'did' ] = argv[i] 
             elif arg == '-t' or arg == '--timeout':
-                i += 1
-                timeout = sys.argv[i] 
-                if not timeout.isdigit():
-                    err = "timeout ({0:s}) is not non-numeric".format( timeout )
-                    sys.stderr.write( "{0:s}: {1}\n".format( progname, err ))
-                    return(1)
-                timeout = int( timeout )
+                i += 1 ;    values[ 'timeout' ] = argv[i] 
             elif arg == '-s' or arg == '--show-aliases':
                 show_aliases_flag = True
             elif arg == '-h' or arg == '--help':
@@ -317,8 +183,7 @@ def main():
         return(1) ;
     dprint( "using config file: " + config_file )
 
-
-    config.Config.set_debug( debug_flag )
+    config.Config.set_debug( globals.debug_flag )
 
     # no definitions file.  Our type info is all in our config file.
     try:
@@ -348,8 +213,9 @@ def main():
     for keyword in keywords_i_need:
         if keyword not in keywords:
             num_errs += 1
-            err = "missing keyword \'{1:s}\' in section \'authentication\' in {2:s}". \
-                format( keyword, config_file )
+            err = "missing keyword \'%s\' in section \'authentication\'" + \
+                  " in %s"
+            err = err % ( keyword, config_file )
             sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
 
     if num_errs:
@@ -362,22 +228,43 @@ def main():
     dprint( "user = {0:s}".format( userid ))
     dprint( "pass = {0:s}".format( password ))
 
-    # now get the line number we will send texts from
-    try:
-        did = conf.get_values( 'sms', 'did' )
-    except ValueError as err:
-        err = "Missing \'did\' keyword in section \'sms\' in {0:s}". \
-            format( config_file )
-        sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
-        return(1)
+    # values from the config file over-ride any defaults
+    keywords = conf.get_keywords( 'sms' )
+    for keyword in keywords:
+        type_ = conf.get_type( 'sms', keyword )
+        if type_ == 'scalar':
+            val = conf.get_values( 'sms', keyword )
+            defaults[ keyword ] = val
+            msg = "Replacing/setting default for \'{0}\' ".format( keyword )
+            msg = msg + "value of \'{0}\' from config file".format( val )
+            dprint( msg )
 
-    if did_number != "":
-        msg = "preferring DID from option " + \
-              " ({0:s}) over DID from config file ({1:s})". \
-              format( did_number, did )
-        dprint( msg )
-    else:
-        did_number = did
+    # populate our values with defaults - which could have been updated from
+    # the config file
+    for field in defaults:
+        if ( field not in values ) or ( values[ field ] == None ):
+            dprint( "Using \'{0}\' value of \'{1}\' from defaults". \
+                format( field, defaults[ field ] ))
+            values[ field ] = defaults[ field ]
+
+    # we now have our values settled from defaults, config-file, and cmd-line
+
+    timeout = values[ 'timeout' ]
+
+    if isinstance( timeout, str ):
+        if not timeout.isdigit():
+            err = "timeout ({0:s}) is not numeric".format( timeout )
+            sys.stderr.write( "{0:s}: {1}\n".format( progname, err ))
+            return(1)
+        timeout = int( timeout )
+
+    # now get the line number we will send texts from
+
+    did = values[ 'did' ]
+    if did == None:
+        err = "no DID given from either config file or command-line"
+        sys.stderr.write( "{0:s}: {1}\n".format( progname, err ))
+        return(1)
 
     dprint( "using DID \'{0:s}\' to send message from".format( did ))
 
@@ -386,7 +273,11 @@ def main():
     # user asked for it
 
     if want_help_flag:
-        usage()
+        u_values = { 'config-file': config_file,
+                   'did-number':  did,
+                   'timeout':     timeout
+                 }
+        usage( u_values )
         return(0)
 
     # see if there are aliases
@@ -420,7 +311,6 @@ def main():
 
         return(0)
 
-
     # sanity checking
 
     if recipient == "":
@@ -439,14 +329,13 @@ def main():
     dprint( "config file is {0:s}".format( config_file ))
     dprint( "message is now \"{0:s}\"".format( message ))
     dprint( "recipient is \'{0:s}\'".format( recipient ))
-    dprint( "DID number is \'{0:s}\'".format( did_number ))
+    dprint( "DID number is \'{0:s}\'".format( did ))
 
-
-    if did_number in aliases:
-        dprint( "found DID \'{0:s}\' in aliases!".format( did_number ))
-        did_number = aliases[ did_number ]
+    if did in aliases:
+        dprint( "found DID \'{0:s}\' in aliases!".format( did ))
+        did = aliases[ did ]
         dprint( "DID number to send text FROM is now \'{0:s}\'". \
-            format( did_number ))
+            format( did ))
 
     if recipient in aliases:
         dprint( "found recipient \'{0:s}\' in aliases!".format( recipient ))
@@ -466,12 +355,12 @@ def main():
         sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
         return(1)
 
-    did_number = did_number.replace( '-', '' )        # remove dashes
-    did_number = did_number.replace( ' ', '' )        # remove dashes
-    m = re.match( "^\d+$", did_number )
+    did = did.replace( '-', '' )        # remove dashes
+    did = did.replace( ' ', '' )        # remove dashes
+    m = re.match( "^\d+$", did )
     if not m:
         err = "DID phone number must be digits: \'{0:s}\'.". \
-            format( did_number )
+            format( did )
         sys.stderr.write( "{0:s}: {1:s}\n".format( progname, err ))
         return(1)
 
@@ -485,16 +374,12 @@ def main():
     dprint( "BASE URL = " + base_url )
 
     # escape the message
-    if PY2:
-        message = urllib.quote( message )
-    if PY3:
-        message = urllib.parse.quote( message )
-
+    message = urllib.parse.quote( message )
 
     # add to the rest of the URL
     method = 'sendSMS'
     url = base_url + "&method={0:s}&dst={1:s}&did={2:s}&message={3:s}". \
-        format( method, recipient, did_number, message )
+        format( method, recipient, did, message )
 
     if dont_send_flag:
         print( 'URL = ' + url )
@@ -503,7 +388,7 @@ def main():
     # send the request
 
     try:
-        json_struct = send_request( url )
+         json_struct = send_request( url, timeout )
     except BadWebCall as err:
         sys.stderr.write( "{0:s}: {1:s}\n".format( progname, str(err)))
         return(1)
@@ -511,9 +396,3 @@ def main():
     # if we appeared to make the call ok, then we're done
 
     return 0
-
-
-if main():
-    sys.exit(1)
-else:
-    sys.exit(0)

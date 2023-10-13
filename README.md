@@ -1,5 +1,5 @@
-# voip.ms
-programs for using API of voip.ms service
+# programs using voip.ms API
+These programs use the API of the voip.ms phone service
 
 ## Description
 This set of programs uses a config file to supply authentication information to
@@ -7,6 +7,24 @@ use the API of the VOIP service at voip.ms.  There is an included example config
 file that needs to have the userid and password changed, and the file installed
 into your HOME directory.  You can tweak the config file to set which fields 
 you are interested in, the order and size of the fields, and the titles.
+
+## programs
+
+* black-list
+* get-cdrs
+* get-did-info
+* send-sms-message
+
+## Installation
+
+To install from downloading from Github:
+
+    make install        # install programs
+    make man            # install man-pages
+
+To install from the Python Package Index (PyPI):
+
+    pip install voip-ms-moxad
 
 ## Example usages
 This will print CDR records from November 11 to November 22, in reverse order
@@ -43,19 +61,22 @@ There is a help option with each program.  For eg:
     % get-cdrs --help
 
     usage: get-cdrs [options]*
-        [-a|--account]     account-name
-        [-c|--config]      config-file
-        [-d|--debug]       (debugging output)
-        [-f|--from]        YYYY-MM-DD (FROM date)
-        [-h|--help]        (help)
-        [-q|--quiet]       (quiet.  No headings and titles)
-        [-r|--reverse]     (reverse date order of CDR output)
+        [-a|--account str]     (account name)
+        [-c|--config file]     (config-file (default=/home/rj/.voip-ms.conf)
+        [-d|--debug]           (debugging output)
+        [-f|--from date]       (YYYY-MM-DD - FROM date)
+        [-h|--help]            (help)
+        [-p|--padding num]     (padding between output fields (default=3)
+        [-q|--quiet]           (quiet.  No headings and titles)
+        [-r|--reverse]         (reverse date order of CDR output)
         [-s|--sheldon]
-        [-t|--to]          YYYY-MM-DD (TO date)
-        [-C|--cost]        (total up costs and duration of CDRs)
-        [-L|--last-month]  (want CDR records for LAST month)
-        [-T|--this-month]  (want CDR records for THIS month)
-        [-V|--version]     (print version of this program)
+        [-t|--to date]         (YYYY-MM-DD - TO date)
+        [-w|--timeout  num]    (default=120)
+        [-C|--cost]            (total up costs and duration of CDRs)
+        [-L|--last-month]      (want CDR records for LAST month)
+        [-T|--this-month]      (want CDR records for THIS month)
+        [-V|--version]         (print version of this program)    
+
 
 ## API setup.
 You need to set up your voip.ms service to permit access to it.  This includes

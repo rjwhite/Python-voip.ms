@@ -1,249 +1,116 @@
-#!/usr/bin/env python
+"""
+print or manipulate black-list from voip.ms API
 
-# maipulate black-list from voip.ms API
+Print and manage a black-list of numbers for your voip.ms phone lines
 
-# Examples:
-# black-list --help       ( print usage )
-# black-list              ( print the list of filters along with rule IDs )
-# black-list 519-555-0001 (add an entry)
-# black-list -X -f 12345  ( delete rule with filter ID 12345 )
-# black-list --busy   --note 'DickHeads Inc'  4165551212 ( add an entry )
-# black-list --hangup --note 'DickHeads Inc'  --filterid 12345  4165551212
+Examples:
+  black-list --help           ( print usage )
+  black-list                  ( print the list of filters along with rule IDs )
+  black-list 519-555-0001     (add an entry)
+  black-list -X -f 12345      ( delete rule with filter ID 12345 )
+  black-list --busy   --note 'DickHeads Inc'  4165551212 ( add an entry )
+  black-list --hangup --note 'DickHeads Inc'  --filterid 12345  4165551212
+"""
 
 # Copyright 2018 RJ White
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-#
+
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-#
+
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-# ---------------------------------------------------------------------
-
-
-# need 3rd party Config from github.com/rjwhite/Python-config-module
-# add the default path if they installed it as a normal user via
-#    python setup.py install --user=~
 
 import os
 import sys
 import re
-import json
-import urllib
-
-version      = 'v0.6'
-progname     = sys.argv[0]
-debug_flag   = False
-config_file = None
-did          = None             # line the message come FROM
-routing      = 'sys:noservice'
-
-home = None
 try:
-    home = os.environ[ 'HOME' ]
-except Exception:
-    sys.stderr.write( "{0}: could not get HOME environment variable\n". \
-        format( progname ))
+    import urllib
+
+    from config_moxad import config
+
+    from .functions import find_config_file, dprint, send_request, BadWebCall
+    from . import globals
+    from . import __version__
+except ModuleNotFoundError as err:
+    sys.stderr.write( "Error: missing module: %s\n" % err )
     sys.exit(1)
 
-try:
-    import requests
-except ImportError as err:
-    sys.stderr.write( "{0}: {1}\n".format( progname, err ))
-    sys.stderr.write( "{0}: You may need to do a \'pip install requests\'\n". \
-        format( progname ))
-    sys.exit(1)
-
-if home:
-    sys.path.append( home + '/lib/python' )
-
-config_module = "https://github.com/rjwhite/Python-config-module"
-try:
-    import config
-except ImportError as err:
-    sys.stderr.write( "{0}: Please install config module\n". \
-        format( progname ))
-    sys.stderr.write( "{0}: can be obtained from {1}\n". \
-        format( progname, config_module ))
-    sys.exit(1)
-
-# need way to quickly find out if we're Python version 2 or 3
-PY2 = sys.version_info[0] == 2
-PY3 = sys.version_info[0] == 3
-
-class BadWebCall( Exception ): pass
-
-
-# Find a config file to use.
-# Passed a pathname of the last-ditch effort config file,
-# which is likely the pathname given with the -c/--config
-# option to the program.
-# We accept the *last* *existing* config file from the list:
-#   $HOME/.voip-ms.conf
-#   environment variable VOIP_MS_CONFIG_FILE
-#   the pathnane passed as an argument
-#
-# Arguments:
-#   pathname
-# Returns:
-#   config-file  (could potentially be None)
-# Exceptions:
-#   KeyError
-# Globals:
-#   home
-
-def find_config_file( str ):
-    global home
-
-    my_name = sys._getframe().f_code.co_name
-    final_config = None
-
-    # see if there is a config in the users HOME directory
-    if home:
-        pathname = home + '/' + ".voip-ms.conf"
-        if os.path.isfile( pathname ):
-            dprint( "{0}(): found config {1}".format( my_name, pathname ))
-            final_config = pathname
-        else:
-            dprint( "{0}(): no config found in HOME".format( my_name ))
-
-    # see if the user set an environment variable VOIP_MS_CONFIG_FILE
-    try:
-        pathname = os.environ[ 'VOIP_MS_CONFIG_FILE' ]
-        if os.path.isfile( pathname ):
-            dprint( "{0}(): found config via VOIP_MS_CONFIG_FILE: {1}". \
-                format( my_name, pathname ))
-            final_config = pathname
-    except KeyError:
-        dprint( "{0}(): environment variable VOIP_MS_CONFIG_FILE not set ". \
-            format( my_name ))
-
-    # see if the user gave a --config option and if the file exists
-    if str:
-        if os.path.isfile( str ):
-            dprint( "{0}(): found config given by option: {1}". \
-                format( my_name, str ))
-            final_config = str
-        else:
-            dprint( "{0}(): config file given by option does not exist: {1}". \
-                format( my_name, str ))
-
-    if final_config:
-        dprint( "{0}(): final config file to use: {1}". \
-            format( my_name, final_config ))
-    else:
-        dprint( "{0}(): could not find a config file".format( my_name ))
-
-    return( final_config )
-
-
-# debug function if --debug|-d option given
-#
-# Arguments:
-#   string to print
-# Returns:
-#   0
-# Exceptions:
-#   none
-
-def dprint( msg ):
-    global debug_flag
-
-    if debug_flag == False: return(0)
-    print( 'debug: ' + msg )
-    return(0) ;
-
-
-# send a URL to the Voip.ms API
-#
-# Arguments:
-#   1:  URL
-# Returns:
-#   JSON structure
-# Exceptions:
-#   BadWebCall
-
-def send_request( url ):
-    my_name = sys._getframe().f_code.co_name
-
-    dprint( "{0}(): URL = {1}".format( my_name, url ))
-
-    try:
-        res = requests.get( url )
-        json_data = res.text
-        json_struct = json.loads( json_data )
-        status = str( json_struct[ 'status' ] )
-    except Exception as err:
-        raise BadWebCall( "{0}(): {1}".format( my_name, err ))
-
-    if status != 'success':
-        raise BadWebCall( "{0}(): Failed status: {1}". \
-            format( my_name, status ))
-
-    dprint( "{0}(): status = {1}".format( my_name, status ))
-
-    return( json_struct )
 
 
 # print usage
 #
 # Arguments:
-#   none
+#   a dictionary containing values for:
+#       'config-file'
+#       'did-number'
+#       'timeout'
+#		'routing'
 # Returns:
 #   0
 # Exceptions:
 #   none
-# Global variables:
-#   config_file, did, routing
 
-def usage():
-    print( "usage: {} [options]* caller-id".format( sys.argv[0] ))
+def usage( values ):
+    print( "usage: {} [options]* caller-id".format( globals.progname ))
+
+    config_file = values.get( 'config-file', '?' )
+    did_number  = values.get( 'did-number', '?' )
+    timeout     = values.get( 'timeout', '?' )
+    routing     = values.get( 'routing', '?' )
+
     options = """\
-    [-c|--config]        config-file (default={})
-    [-d|--debug]         (debugging output)
-    [-f|--filterid]      number (existing rule filter ID to change/delete rule)
-    [-h|--help]          (help)")
-    [-l|--line]          DID-phone-number (default={})
-    [-n|--note]          string
-    [-r|--routing]       noservice|busy|hangup|disconnected (default={})
-    [-B|--busy]          (routing=sys:busy)
-    [-D|--disconnected]  (routing=sys:disconnected)
-    [-H|--hangup]        (routing=sys:hangup)
-    [-N|--noservice]     (routing=sys:noservice)
-    [-V|--version]       (print version of this program)
-    [-X|--delete]        (delete an entry. Also needs --filterid)\
+    [-c|--config  file]     (default={})
+    [-d|--debug]            (debugging output)
+    [-f|--filterid  num]    (existing rule filter ID to change/delete rule)
+    [-h|--help]             (help)
+    [-l|--line  DID]        (DID-phone-number (default={}))
+    [-n|--note  string]     (descriptive note)
+    [-r|--routing  noservice|busy|hangup|disconnected] (default={})
+    [-t|--timeout num]      (default={})
+    [-B|--busy]             (routing=sys:busy)
+    [-D|--disconnected]     (routing=sys:disconnected)
+    [-H|--hangup]           (routing=sys:hangup)
+    [-N|--noservice]        (routing=sys:noservice)
+    [-V|--version]          (print version of this program)
+    [-X|--delete]           (delete an entry. Also needs --filterid)\
     """
 
-    print( options.format( config_file, did, routing ))
+    print( options.format( config_file, did_number, routing, timeout ))
     return(0)
 
 
 # main program
 #
 # Arguments:
-#   none
+#   command-line arguments
 # Returns:
 #   0:  ok
 #   1:  not ok
 # Exceptions:
 #   none
-# Global variables:
-#   config_file, did, routing, debug_flag
 
-def main():
-    global config_file, did, routing, debug_flag
+def main( argv=sys.argv ):
+    config_file = None
+
+    progname = argv[0]
+    if progname == None or progname == "":
+        progname = 'blacklist'
+
+    globals.progname = progname     # make available to other functions
+    globals.debug_flag = False      # used by functions.debug
 
     ROUTING_NO_SERVICE   = "noservice"
     ROUTING_BUSY         = "busy"
     ROUTING_HANG_UP      = "hangup"
     ROUTING_DISCONNECTED = "disconnected"
 
-    valid_routing_types = set( [ ROUTING_NO_SERVICE, ROUTING_BUSY, 
+    validrouting_types = set( [ ROUTING_NO_SERVICE, ROUTING_BUSY, 
                                 ROUTING_HANG_UP, ROUTING_DISCONNECTED ] )
 
     help_flag       = False
@@ -263,25 +130,30 @@ def main():
         'note':     "Added by {0} program".format( progname ),
         'routing':  ROUTING_NO_SERVICE,
         'callerid': None,
-        'did':      None
+        'did':      None,
+        'timeout':  45
     }
     values  = {}
 
-    num_args = len( sys.argv )
+    num_args = len( argv )
     i = 1
     while i < num_args:
         try:
-            arg = sys.argv[i]
+            arg = argv[i]
             if arg == '-c' or arg == '--config':
-                i = i + 1 ;     config_file = sys.argv[i]
+                i = i + 1 ;     config_file = argv[i]
             elif arg == '-l' or arg == '--line':
-                i = i + 1 ;     values[ 'did' ] = sys.argv[i]
+                i = i + 1 ;     values[ 'did' ] = argv[i]
             elif arg == '-f' or arg == '--filterid':
-                i = i + 1 ;     filter_id = sys.argv[i]
+                i = i + 1 ;     filter_id = argv[i]
+                if not filter_id.isdigit():
+                    err = "filter ID ({0:s}) is not numeric".format( filter_id )
+                    sys.stderr.write( "{0:s}: {1}\n".format( progname, err ))
+                    return(1)
             elif arg == '-n' or arg == '--note':
-                i = i + 1 ;     values[ 'note' ] = sys.argv[i]
+                i = i + 1 ;     values[ 'note' ] = argv[i]
             elif arg == '-r' or arg == '--routing':
-                i = i + 1 ;     values[ 'routing' ] = sys.argv[i]
+                i = i + 1 ;     values[ 'routing' ] = argv[i]
             elif arg == '-B' or arg == '--busy':
                 values[ 'routing' ] = ROUTING_BUSY
             elif arg == '-D' or arg == '--disconnected':
@@ -290,10 +162,18 @@ def main():
                 values[ 'routing' ] = ROUTING_HANG_UP
             elif arg == '-N' or arg == '--noservice':
                 values[ 'routing' ] = ROUTING_NO_SERVICE
+            elif arg == '-t' or arg == '--timeout':
+                i += 1
+                timeout = argv[i]
+                if not timeout.isdigit():
+                    err = "timeout ({0:s}) is not numeric".format( timeout )
+                    sys.stderr.write( "{0:s}: {1}\n".format( progname, err ))
+                    return(1)
+                values[ 'timeout' ] = int( timeout )
             elif arg == '-X' or arg == '--delete':
                 delete_flag = True
             elif arg == '-d' or arg == '--debug':
-                debug_flag = True
+                globals.debug_flag = True
             elif arg == '-a' or arg == '--all':
                 all_info_flag = True
             elif arg == '-h' or arg == '--help':
@@ -301,7 +181,8 @@ def main():
                 # what some default values are, from the config, etc
                 help_flag = True
             elif arg == '-V' or arg == '--version':
-                print( "version: {0}".format( version ))
+                print( "package version: {0}".format( __version__ ))
+                print( "config  version: {0}".format( config.__version__ ))
                 return(0)
             else:
                 m = re.match( "^\-", arg )
@@ -311,15 +192,16 @@ def main():
                     return(1)
 
                 if caller_id != None:
-                    sys.stderr.write( "{0}: already provided a caller ID: \'{1}\'\n". \
-                        format( progname, caller_id ))
+                    err = "already provided a caller ID"
+                    sys.stderr.write( "{0}: {1}: {2}\n". \
+                        format( progname, err, caller_id ))
                     return(1)
                 else:
                     caller_id = arg
                     values[ 'callerid' ] = caller_id
         except IndexError as err:
-            sys.stderr.write( "{0}: {1}.  Missing argument value to \'{2}\'?\n". \
-                format( progname, err, arg ))
+            err2 = "{0}.  Missing argument value to \'{1}\'?".format( err, arg )
+            sys.stderr.write( "{0}: {1}\n".format( progname, err2 ))
             return(1)
 
         i = i+1
@@ -332,8 +214,8 @@ def main():
 
         if filter_id != None:
             # we're making changes, not adding new stuff - which could have
-            # defaults save our options, to over-ride whatever the current
-            # value are, and set a flag
+            # defaults. save into options to over-ride whatever the current
+            # values are, and set a flag
 
             options = {}
             for field in values:
@@ -353,11 +235,7 @@ def main():
         return(1) ;
     dprint( "using config file: " + config_file )
 
-    if help_flag:
-        usage()
-        return(0)
-
-    config.Config.set_debug( debug_flag )
+    config.Config.set_debug( globals.debug_flag )
 
     # no definitions file.  Our type info is all in our config file.
     try:
@@ -387,8 +265,10 @@ def main():
     for keyword in keywords_i_need:
         if keyword not in keywords:
             num_errors = num_errors + 1
-            sys.stderr.write( "{0}: missing keyword \'{1}\' in section \'authentication\' in {2}\n". \
-                format( progname, keyword, config_file ))
+            err = "{0}: missing keyword \'{1}\' in section ". \
+                format( progname, keyword )
+            err = err + "\'authentication\' in {0}\n".format( config_file )
+            sys.stderr.write( err )
 
     if num_errors > 0:
         return(1)
@@ -405,8 +285,10 @@ def main():
     keywords = conf.get_keywords( 'black-list' )
     for keyword in keywords:
         val = conf.get_values( 'black-list', keyword )
-        dprint( "Replacing/setting default for \'{0}\' value of \'{1}\' from config file". \
-            format( keyword, val ))
+        msg = "Replacing/setting default for \'{0}\' ".format( keyword )
+        msg = msg + "value of \'{0}\' from config file".format( val )
+        dprint( msg )
+
         defaults[ keyword ] = val
 
     # populate our values with defaults - which could have been updated from 
@@ -417,6 +299,7 @@ def main():
                 format( field, defaults[ field ] ))
             values[ field ] = defaults[ field ]
 
+    timeout = int( values[ 'timeout' ] )   # must exist, because was in defaults
 
     # build the base URL
 
@@ -424,7 +307,6 @@ def main():
             "?api_username={0}&api_password={1}". \
                 format( userid, password )
     dprint( "BASE URL = " + base_url )
-
 
     # Need to check if this is an update of one or more items.  if so, we
     # want to preserve the current values if we did not specifically give new
@@ -438,7 +320,7 @@ def main():
         dprint( "URL for getting OLD data  = " + url )
 
         try:
-            old_data = send_request( url )
+            old_data = send_request( url, timeout )
         except BadWebCall as err:
             sys.stderr.write( "{0}: {1}\n".format( progname, str(err)))
             return(1)
@@ -448,12 +330,16 @@ def main():
         try:
             num_entries = len( old_data[ 'filtering' ] )
         except KeyError as err:
-            sys.stderr.write( "{0}: No \'filtering\' data found\n".format( progname ))
+            sys.stderr.write( "{0}: No \'filtering\' data found\n". \
+                format( progname ))
             return(1)
 
         if num_entries != 1:
-            sys.stderr.write( "{0}: did not get 1 entry (got {1:d}) for OLD values with filter ID = {2}\n". \
-                format( progname, num_entries, filter_id ))
+            err = "{0}: did not get 1 entry (got {1:d}) ". \
+                format( progname, num_entries )
+            err = err + "for OLD values with filter ID = {0}\n". \
+                format( filter_id )
+            sys.stderr.write( err )
             return(1)
 
         fields_we_want = [ 'note', 'routing', 'callerid', 'did' ]
@@ -468,7 +354,7 @@ def main():
 
         for field in options:
             old_fields[ field ] = options[ field ]
-            dprint( "Over-riding field \'{0}\' with command-line data \'{1}\'". \
+            dprint( "Over-riding field \'{0}\' with cmd-line data \'{1}\'". \
                 format( field, options[ field ] ))
 
         note      = old_fields[ 'note' ]
@@ -484,14 +370,9 @@ def main():
         did       = values[ 'did' ]
         routing   = values[ 'routing' ]
 
-
     #  encode stuff that might have spaces or other unfriendly characters
-    if PY2:
-        note     = urllib.quote( note )
-        password = urllib.quote( password )
-    if PY3:
-        note     = urllib.parse.quote( note )
-        password = urllib.parse.quote( password )
+    note     = urllib.parse.quote( note )
+    password = urllib.parse.quote( password )
 
     # see if DID is given, and if so, format it correctly
 
@@ -501,7 +382,7 @@ def main():
 
         if did.isdigit() == False:
             sys.stderr.write( "{0}: DID is not numeric: {1}\n". \
-                format( progname, str(did)))
+                format( progname, str( did )))
             return(1)
 
         dprint( "DID number is now: {0}".format( did ))
@@ -512,7 +393,7 @@ def main():
 
     # make sure any routing type is valid
 
-    if routing not in valid_routing_types:
+    if routing not in validrouting_types:
         sys.stderr.write( "{0}: Invalid routing type: \'{1}\'\n". \
             format( progname, routing ))
         return(1)
@@ -534,38 +415,41 @@ def main():
                 format( progname, caller_id ))
             return(1)
 
-
     # we finally have default values set to show up in the usage
 
     if help_flag:
-        usage()
+        u_values = { 'config-file': config_file,
+                   'timeout':     timeout,
+                   'did-number':  did,
+                   'routing':     routing
+                 }
+        usage( u_values )
         return(0)
-
 
     # ready to go.
 
     if delete_flag:
         if set_flag:
-            sys.stderr.write( "{0}: Don't give fields to change along with the delete option.\n". \
-                format( progname ))
+            err = "Don't give fields to change along with the delete option"
+            sys.stderr.write( "{0}: {1}\n".format( progname, err ))
             return(1)
-            
+
         if filter_id == None:
-            sys.stderr.write( "{0}: Need to provide a filter ID to delete an entry\n". \
-                format( progname ))
+            err = "Need to provide a filter ID to delete an entry"
+            sys.stderr.write( "{0}: {1}\n".format( progname, err ))
             return(1)
 
         if caller_id != None:
-            sys.stderr.write( "{0}: Don't provide a caller ID to delete an entry\n". \
-                format( progname ))
+            err = "Don't provide a caller ID to delete an entry"
+            sys.stderr.write( "{0}: {1}\n".format( progname, err ))
             return(1)
 
         # we are doing a DELETE
         method = methods[ 'delete' ]
     elif set_flag:
         if caller_id == None:
-            sys.stderr.write( "{0}: Need to provide a caller ID to set or change an entry.\n". \
-                format( progname ))
+            err = "Need to provide a caller ID to set or change an entry"
+            sys.stderr.write( "{0}: {1}\n".format( progname, err ))
             return(1)
 
         # we are doing a SET
@@ -597,7 +481,7 @@ def main():
     dprint( "URL = " + url )
 
     try:
-        json_struct = send_request( url )
+        json_struct = send_request( url, timeout )
     except BadWebCall as err:
         sys.stderr.write( "{0}: {1}\n".format( progname, str(err)))
         return(1)
@@ -608,7 +492,8 @@ def main():
     try:
         num_lines = len( json_struct[ 'filtering' ] )
     except KeyError as err:
-        sys.stderr.write( "{0}: No \'filtering\' data found\n".format( progname ))
+        err = "No \'filtering\' data found"
+        sys.stderr.write( "{0}: {1}\n".format( progname, err ))
         return(1)
 
     dprint( "Number of lines is " + str( num_lines ))
@@ -650,10 +535,3 @@ def main():
             format( entry[ 'callerid' ], entry[ 'did' ], entry[ 'routing' ], \
                     int( entry[ 'filtering' ]), entry[ 'note' ] ))
     return(0)
-
-
-
-if main():
-    sys.exit(1)
-else:
-    sys.exit(0)
