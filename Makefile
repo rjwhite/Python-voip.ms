@@ -2,7 +2,7 @@
 
 # If you are in a virtual environment, then it will probably
 # install into;
-#    <virtual-path>/config_moxad/lib/python3.X/site-packages/voip_ms_moxad
+#    <virtual-path>/lib/python3.X/site-packages/voip_ms_moxad
 # Otherwise it will probably end up in:
 #    <your-HOME>/.local/lib/python3.X/site-packages/voip_ms_moxad
 # and assume you meant the --user option since you are a normal user and
@@ -13,7 +13,7 @@ USER_MANPAGES   = ${HOME}/doc/man/man1
 help:
 	@echo use "'make install'" to install package, which will also \
 		fetch requirements
-	@echo use "'make build'" to build package from source
+	@echo use "'make build-dist'" to create source distribution
 	@echo use "'make requirements'" to install requirements found in \
 		requirements.txt
 	@echo use "'make uninstall'" to uninstall package
@@ -26,11 +26,13 @@ install:
 		python3 -m pip install . ; \
 	fi
 
-# you shouldn't have to run this 'requirements' since a 'make install'
-# will cause this thanks to 'dependencies' listed in pyproject.toml
+# you shouldn't have to run this 'requirements' target since a 'make install'
+# will cause the 'dependencies' listed in pyproject.toml to be installed
 
 requirements:
 	python3 -m pip install -r requirements.txt
+
+# build source distribution into ./dist
 
 build-dist:
 	python3 -m pip install --upgrade build

@@ -93,7 +93,7 @@
         been changed to be modules using the main() function as an entry
         point for wrapper programs that import and call them.  They are
         no longer using setup() and disttools, but instead has pip as the
-        front-end for a build, and uses a back-end of hatching, as defined in
+        front-end for a build, and uses a back-end of hatchling, as defined in
         the pyproject.toml file.
 
         Each program (module), under src/voip_ms_moxad, now has a --timeout
@@ -124,3 +124,22 @@
 
         To see why the dependancies in pyproject.toml are pruned and version
         vague compared to requirements.txt, see file info/failing-on-TestPyPI
+
+0.8.1   Aug 20, 2024
+        Makefile:
+          - fixed typos in Makefile and improved comments
+        requirements.txt:
+          - updated versions required for certifi, idna, requests, and urllib3
+            based on security warnings for Githiub Dependabot alerts
+                certifi==2024.7.4
+                idna==3.7
+                requests==2.32.3
+                urllib3==2.2.2
+        pyproject.toml:
+          - updated dependencies for certifi, idna, requests, and urllib3
+                "urllib3>=2.2.2",
+                "requests>=2.32.0",
+                "idna>=3.7",
+                "certifi>=2024.07.04",
+        src/voip_ms_moxad/__init__.py:
+          - updated __version__

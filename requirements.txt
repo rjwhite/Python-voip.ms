@@ -1,10 +1,6 @@
-build==1.0.3
-certifi==2023.7.22
-charset-normalizer==3.3.0
-config_moxad==4.0.1
-idna==3.4
-packaging==23.2
-pyproject_hooks==1.0.0
-requests==2.31.0
-tomli==2.0.1
-urllib3==2.0.6
+certifi==2024.7.4
+charset-normalizer==3.3.2
+config_moxad==4.0.2
+idna==3.7
+requests==2.32.3
+urllib3==2.2.2
