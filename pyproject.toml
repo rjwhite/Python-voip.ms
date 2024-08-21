@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "voip_ms_moxad"
-version = "0.8.1"
+version = "0.8.2"
 authors = [
   { name="RJ White", email="rj.white@moxad.com" },
 ]
@@ -23,8 +23,10 @@ classifiers = [
 
 dependencies = [
     "config_moxad>=4.0",
-    "requests>=2.20",
-    "urllib3>=1.23",
+    "urllib3>=2.2.2",
+    "requests>=2.32.0",
+    "idna>=3.7",
+    "certifi>=2024.07.04",
 ]
 
 [project.urls]

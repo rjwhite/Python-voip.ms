@@ -143,3 +143,7 @@
                 "certifi>=2024.07.04",
         src/voip_ms_moxad/__init__.py:
           - updated __version__
+
+0.8.2   Aug 20, 2024:
+        pyproject.toml:
+          - missed adding idna and certifi in the dependencies in 0.8.1 
