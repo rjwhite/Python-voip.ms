@@ -130,7 +130,7 @@
           - fixed typos in Makefile and improved comments
         requirements.txt:
           - updated versions required for certifi, idna, requests, and urllib3
-            based on security warnings for Githiub Dependabot alerts
+            based on security warnings for Github Dependabot alerts
                 certifi==2024.7.4
                 idna==3.7
                 requests==2.32.3
@@ -147,3 +147,16 @@
 0.8.2   Aug 20, 2024:
         pyproject.toml:
           - missed adding idna and certifi in the dependencies in 0.8.1 
+
+0.8.3   July 4, 2025:
+        requirements.txt:
+          - updated versions required for requests, and urllib3
+            based on security warnings for Github Dependabot alerts
+                "urllib3>=2.5.0",
+                "requests>=2.32.4",
+        pyproject.toml:
+          - updated dependencies for requests, and urllib3
+                "urllib3>=2.5.0",
+                "requests>=2.32.4",
+        src/voip_ms_moxad/__init__.py:
+          - updated __version__

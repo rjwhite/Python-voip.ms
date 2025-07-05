@@ -23,8 +23,8 @@ classifiers = [
 
 dependencies = [
     "config_moxad>=4.0",
-    "urllib3>=2.2.2",
-    "requests>=2.32.0",
+    "urllib3>=2.5.0",
+    "requests>=2.32.4",
     "idna>=3.7",
     "certifi>=2024.07.04",
 ]
