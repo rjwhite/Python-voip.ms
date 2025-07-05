@@ -160,3 +160,9 @@
                 "requests>=2.32.4",
         src/voip_ms_moxad/__init__.py:
           - updated __version__
+
+0.8.4   July 4, 2025:
+        pyproject.toml:
+            - fixed version.  missed updating it in 0.8.3
+        src/voip_ms_moxad/__init__.py:
+            - updated version to match pyproject.toml
