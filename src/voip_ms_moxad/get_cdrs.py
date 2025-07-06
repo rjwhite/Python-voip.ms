@@ -412,8 +412,14 @@ def main( argv=sys.argv ):
     try:
         json_struct = send_request( url, timeout )
     except BadWebCall as err:
-        sys.stderr.write( "{0}: {1}\n".format( progname, str(err)))
-        return(1)
+        # have a nicer message if there are no CDR records
+        if "Failed status: no_cdr" in str(err):
+            print( "No CDR records were found from {0:s} to {1:s}". \
+                format( pretty_date( from_date ), pretty_date( to_date )))
+            return(0)
+        else:
+            sys.stderr.write( "{0}: {1}\n".format( progname, str(err)))
+            return(1)
 
     try:
         status = str( json_struct[ 'status' ] )

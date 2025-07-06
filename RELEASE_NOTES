@@ -166,3 +166,11 @@
             - fixed version.  missed updating it in 0.8.3
         src/voip_ms_moxad/__init__.py:
             - updated version to match pyproject.toml
+
+0.8.5   July 6, 2025:
+        src/voip_ms_moxad/get_cdrs.py:
+            - improved message when there is no CDR records for the period.
+              Instead of:
+                    send_request(): Failed status: no_cdr
+              when we have 0 records, we instead get a nicer message:
+                    No CDR records found from July 6, 2025 to July 6, 2025
